@@ -14,6 +14,7 @@ internal static class Overlay
     private static FrameTimer _frame;
     private static double _noticeDue;
     private static float _menuAnim;
+    private static float _radialAnim;
     private static float _toastLeft;
     private static float _toastLength = 1f;
     private static string _toastTitle = "";
@@ -25,10 +26,10 @@ internal static class Overlay
     /// <summary>Set while a shared hotkey tries a command that may fail quietly, because another one follows it.</summary>
     public static bool Muted;
 
-    /// <summary>Brief feedback for a hotkey. Hidden while the menu is open, which shows the change itself, and under a notice.</summary>
+    /// <summary>Brief feedback for a hotkey. Hidden while the menu or radial is open, which show the change themselves, and under a notice.</summary>
     public static void Toast(string title, string state, bool on)
     {
-        if (!Muted && !Menu.IsOpen && _noticeDue <= Clock.Now)
+        if (!Muted && !Menu.IsOpen && !Radial.IsLive && _noticeDue <= Clock.Now)
             Show(title, state, on, ToastSeconds);
     }
 
@@ -60,6 +61,12 @@ internal static class Overlay
             _menuAnim = 0f;
         }
 
+        if (Radial.IsLive && paused)
+        {
+            Radial.Close();
+            _radialAnim = 0f;
+        }
+
         Dt = _frame.Step(MaxFrame);
         Time += Dt;
 
@@ -72,9 +79,14 @@ internal static class Overlay
         float speed = Menu.IsOpen ? 5f : 7f;
         _menuAnim = _menuAnim < target ? Math.Min(target, _menuAnim + Dt * speed) : Math.Max(target, _menuAnim - Dt * speed);
 
-        bool list = ShowRunningList && _menuAnim <= 0f && !paused && Catalog.Ready && Catalog.ActiveCount > 0;
+        // The radial snaps open faster than the menu, since it's held for a moment at a time, and leaves faster still.
+        float radialTarget = Radial.Visible ? 1f : 0f;
+        float radialSpeed = Radial.Visible ? 8f : 10f;
+        _radialAnim = _radialAnim < radialTarget ? Math.Min(radialTarget, _radialAnim + Dt * radialSpeed) : Math.Max(radialTarget, _radialAnim - Dt * radialSpeed);
+
+        bool list = ShowRunningList && _menuAnim <= 0f && _radialAnim <= 0f && !paused && Catalog.Ready && Catalog.ActiveCount > 0;
         bool hud = !paused && Fader.IsClear && _menuAnim <= 0f && Catalog.Ready && AnyHud();
-        if (canvas == null || (_menuAnim <= 0f && _toastLeft <= 0f && !list && !hud && Fader.Level <= 0f))
+        if (canvas == null || (_menuAnim <= 0f && _radialAnim <= 0f && _toastLeft <= 0f && !list && !hud && Fader.Level <= 0f))
             return;
 
         if (!Begin(canvas, out Font? font))
@@ -93,6 +105,9 @@ internal static class Overlay
 
             if (_menuAnim > 0f)
                 MenuView.Draw(_menuAnim);
+
+            if (_radialAnim > 0f)
+                RadialView.Draw(_radialAnim);
 
             if (_toastLeft > 0f)
                 DrawToast();

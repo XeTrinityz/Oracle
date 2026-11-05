@@ -6,7 +6,10 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace CeZeY.Oracle;
 
-/// <summary>XInput controller support. The game keeps reading the same pad, so its bindings are parked while the menu is open.</summary>
+/// <summary>
+/// XInput controller support. The game keeps reading the same pad, so its bindings are parked while the menu or
+/// radial is open. A single-button RADIAL BUTTON (R3 or L3) is Oracle's for good: its game binding stays parked.
+/// </summary>
 internal static class Pad
 {
     private const ushort Up = 0x0001;
@@ -71,6 +74,12 @@ internal static class Pad
 
     private static string _openText = "";
     private static ushort _openMask = Back;
+    private static string _radialText = "";
+    private static ushort _radialMask;
+    private static string? _ownedBind;
+    private static string? _parkedOwned;
+    private static nint _ownedInput;
+    private static int _ownedFrames;
 
     private static bool _legacy;
     private static bool _missing;
@@ -79,6 +88,14 @@ internal static class Pad
     private static uint _packet;
     private static ushort _now;
     private static ushort _prev;
+
+    /// <summary>The buttons alone, without the left stick standing in for the D-pad.</summary>
+    private static ushort _raw;
+    private static ushort _rawPrev;
+    private static short _lx;
+    private static short _ly;
+    private static short _rx;
+    private static short _ry;
     private static FrameTimer _frame;
     private static long _padUsedAt;
     private static long _keyUsedAt;
@@ -106,6 +123,39 @@ internal static class Pad
     private static bool Held(ushort mask) => mask != 0 && (_now & mask) == mask;
 
     private static bool Pressed(ushort mask) => mask != 0 && (_now & mask) == mask && (_prev & mask) != mask;
+
+    private static bool RawHeld(ushort mask) => mask != 0 && (_raw & mask) == mask;
+
+    private static bool RawPressed(ushort mask) => mask != 0 && (_raw & mask) == mask && (_rawPrev & mask) != mask;
+
+    /// <summary>
+    /// RADIAL BUTTON: "rs", "ls", "lb+rb" or "off". A single stick click becomes Oracle's, so its game binding is
+    /// kept parked (see <see cref="SyncOwned"/>). It can't share the menu's open button.
+    /// </summary>
+    private static void ReadRadialButton()
+    {
+        string text = Radial.Enabled ? Radial.PadButton : "off";
+        if (_radialText == text)
+            return;
+
+        _radialText = text;
+        ushort mask = 0;
+        if (!text.Equals("off", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (string part in text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                mask |= Names.TryGetValue(part, out ushort bit) ? bit : (ushort)0;
+        }
+
+        if (mask != 0 && (mask & _openMask) != 0)
+        {
+            Log.Info("[gamepad] the radial button shares a button with the menu's open button, so the radial is keyboard only.");
+            mask = 0;
+        }
+
+        _radialMask = mask;
+        _ownedBind = mask == RS ? "XboxTypeS_RightThumbstick" : mask == LS ? "XboxTypeS_LeftThumbstick" : null;
+        _ownedFrames = RescanFrames;
+    }
 
     private static void ReadOpenButton()
     {
@@ -157,6 +207,7 @@ internal static class Pad
     private static void Poll()
     {
         _prev = _now;
+        _rawPrev = _raw;
         if (_index >= 0)
         {
             if (Read(_index, out XInputState state))
@@ -168,6 +219,7 @@ internal static class Pad
             Log.Info("Pad: controller " + _index + " disconnected.");
             _index = -1;
             _now = 0;
+            _raw = 0;
             _nextScan = 0.0;
         }
 
@@ -186,6 +238,8 @@ internal static class Pad
             _packet = state.PacketNumber;
             _now = state.Gamepad.Buttons;
             _prev = _now;
+            _raw = _now;
+            _rawPrev = _raw;
             Log.Info("Pad: controller " + i + " connected.");
             return;
         }
@@ -195,6 +249,11 @@ internal static class Pad
     {
         XInputGamepad g = state.Gamepad;
         ushort b = g.Buttons;
+        _raw = b;
+        _lx = g.ThumbLX;
+        _ly = g.ThumbLY;
+        _rx = g.ThumbRX;
+        _ry = g.ThumbRY;
         if (g.ThumbLY > StickPush)
             b |= Up;
         else if (g.ThumbLY < -StickPush)
@@ -223,12 +282,16 @@ internal static class Pad
         {
             if (_blockedInput != 0 || _restorePending)
                 Unblock("controller support off");
+            ReleaseOwned();
             _now = 0;
             _prev = 0;
+            _raw = 0;
+            _rawPrev = 0;
             return;
         }
 
         ReadOpenButton();
+        ReadRadialButton();
         Poll();
         if (!Connected)
         {
@@ -236,6 +299,15 @@ internal static class Pad
             _mapDeferred = false;
             if (_blockedInput != 0 || _restorePending)
                 Unblock("controller disconnected");
+            if (Radial.IsLive && Radial.OpenedBy == Radial.Source.Pad)
+                Radial.Close();
+            return;
+        }
+
+        if (Radial.IsLive)
+        {
+            Block();
+            RadialFrame();
             return;
         }
 
@@ -244,6 +316,7 @@ internal static class Pad
             if (_restorePending && (_now & ~Start) == 0)
                 Unblock("menu closed");
             RepairBindings();
+            SyncOwned();
             ClosedFrame(dt);
             return;
         }
@@ -256,8 +329,15 @@ internal static class Pad
     {
         Array.Fill(_repeat, -1f);
 
-        if (Pressed(LB) && (_openMask & LB) == 0 && Characters.I.PlayingOther && !Characters.I.Busy)
+        if (Pressed(LB) && (_openMask & LB) == 0 && (_radialMask & LB) == 0 && Characters.I.PlayingOther && !Characters.I.Busy)
             _enterCar = true;
+
+        if (RawPressed(_radialMask) && !_waitRelease && Radial.CanOpen())
+        {
+            _padUsedAt = Stopwatch.GetTimestamp();
+            Radial.Open(Radial.Source.Pad);
+            return;
+        }
 
         if (_waitRelease)
         {
@@ -322,10 +402,11 @@ internal static class Pad
             return;
         }
 
+        bool arranging = Radial.Arranging;
         if (Pressed(A))
             Menu.Press(Keys.Enter, false);
         else if (Pressed(B))
-            Menu.Press(Menu.Binding != null ? Keys.Escape : Keys.Back, false);
+            Menu.Press(Menu.Binding != null || arranging ? Keys.Escape : Keys.Back, false);
         else if (Pressed(LB))
             Menu.Press(Keys.PageUp, false);
         else if (Pressed(RB))
@@ -333,14 +414,22 @@ internal static class Pad
         else if (Pressed(X))
             Menu.Press(Menu.Confirming != null ? Keys.Escape : Keys.Delete, false);
         else if (Pressed(Y))
-            Menu.Press(Menu.Confirming != null ? Keys.Escape : Menu.PinKey, false);
+            Menu.Press(Menu.Confirming != null ? Keys.Escape : Menu.FavouriteKey, false);
 
         if (!Menu.IsOpen)
             return;
 
+        // In the radial editor a stick points straight at a slot, so only the D-pad steps from slot to slot.
+        ushort dirs = _now;
+        if (Radial.Arranging)
+        {
+            PointWithSticks();
+            dirs = _raw;
+        }
+
         for (int i = 0; i < Dirs.Length; i++)
         {
-            if (!Held(Dirs[i]) || ((_openMask & Dirs[i]) != 0 && _waitRelease))
+            if ((dirs & Dirs[i]) == 0 || ((_openMask & Dirs[i]) != 0 && _waitRelease))
             {
                 _repeat[i] = -1f;
                 continue;
@@ -363,6 +452,129 @@ internal static class Pad
             if (!Menu.IsOpen)
                 return;
         }
+    }
+
+    /// <summary>
+    /// The live radial. Held open: letting go of the radial button uses the slot under the pointer. Tapped open
+    /// (RADIAL MODE TAP): the button closes it again. Either stick points, A uses a slot and stays open, B closes,
+    /// LB / RB or the D-pad's left and right turn the page.
+    /// </summary>
+    private static void RadialFrame()
+    {
+        if (Radial.OpenedBy == Radial.Source.Pad)
+        {
+            if (Radial.HoldMode && !RawHeld(_radialMask))
+            {
+                Radial.Release();
+                return;
+            }
+
+            if (!Radial.HoldMode && RawPressed(_radialMask) && Gfx.Time - Radial.OpenedAt > 0.05)
+            {
+                Radial.Close();
+                return;
+            }
+        }
+
+        PointWithSticks();
+
+        if (Pressed(A))
+            Radial.Use();
+        else if (Pressed(B))
+            Radial.Close();
+        else if (RawPressed(Left) || ((_radialMask & LB) == 0 && RawPressed(LB)))
+            Radial.TurnPage(-1);
+        else if (RawPressed(Right) || ((_radialMask & RB) == 0 && RawPressed(RB)))
+            Radial.TurnPage(1);
+    }
+
+    /// <summary>Whichever stick leans further points the radial. XInput's Y runs up, the screen's runs down.</summary>
+    private static void PointWithSticks()
+    {
+        float lx = _lx / 32767f;
+        float ly = _ly / 32767f;
+        float rx = _rx / 32767f;
+        float ry = _ry / 32767f;
+        if (lx * lx + ly * ly >= rx * rx + ry * ry)
+            Radial.PointStick(lx, -ly);
+        else
+            Radial.PointStick(rx, -ry);
+    }
+
+    /// <summary>
+    /// Keeps the RADIAL BUTTON's own game binding parked, so pressing it opens the radial and nothing else. Checked
+    /// every so often, as the game rebuilds its bindings on a new pawn or an options change.
+    /// </summary>
+    private static void SyncOwned()
+    {
+        if (++_ownedFrames < RescanFrames && _ownedBind == _parkedOwned)
+            return;
+
+        _ownedFrames = 0;
+        try
+        {
+            PlayerInput? input = CurrentInput();
+            if (input == null)
+                return;
+
+            if (_parkedOwned != null && (_parkedOwned != _ownedBind || input.Ptr != _ownedInput))
+            {
+                if (input.Ptr == _ownedInput)
+                    ParkNamed(input, _parkedOwned, false);
+                _parkedOwned = null;
+            }
+
+            if (_ownedBind != null)
+            {
+                int parked = ParkNamed(input, _ownedBind, true);
+                if (parked > 0)
+                    Log.Detail("Pad: " + _ownedBind + " belongs to the radial now (" + parked + " bindings parked).");
+                _parkedOwned = _ownedBind;
+                _ownedInput = input.Ptr;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Throttled("pad owned", "Pad: could not reserve the radial button: " + ex.Message);
+        }
+    }
+
+    /// <summary>Gives the radial button's game binding back, when controller support is switched off or the mod unloads.</summary>
+    private static void ReleaseOwned()
+    {
+        if (_parkedOwned == null)
+            return;
+
+        string name = _parkedOwned;
+        _parkedOwned = null;
+        try
+        {
+            if (CurrentInput() is { } input && input.Ptr == _ownedInput)
+                ParkNamed(input, name, false);
+        }
+        catch (Exception ex)
+        {
+            Log.Info("Pad: could not give " + name + " back to the game: " + ex.Message);
+        }
+    }
+
+    private static int ParkNamed(PlayerInput input, string name, bool park)
+    {
+        int changed = 0;
+        Span<Input.FKeyBind> binds = input.Bindings.AsSpan();
+        for (int i = 0; i < binds.Length; i++)
+        {
+            ref Input.FKeyBind b = ref binds[i];
+            if ((b.Control && b.Shift && b.Alt) == park || !string.Equals(b.Name.ToString(), name, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            b.Control = park;
+            b.Shift = park;
+            b.Alt = park;
+            changed++;
+        }
+
+        return changed;
     }
 
     /// <summary>Holds back the map on BACK until we know it's a tap, not the start of opening the menu.</summary>
@@ -461,7 +673,11 @@ internal static class Pad
             Unblock("menu closed");
     }
 
-    public static void Shutdown() => Unblock("mod unloaded");
+    public static void Shutdown()
+    {
+        Unblock("mod unloaded");
+        ReleaseOwned();
+    }
 
     private static void Unblock(string why)
     {
@@ -509,7 +725,12 @@ internal static class Pad
         for (int i = 0; i < binds.Length; i++)
         {
             ref Input.FKeyBind b = ref binds[i];
-            if ((b.Control && b.Shift && b.Alt) == park || !IsPadBind(b.Name.ToString() ?? ""))
+            string name = b.Name.ToString() ?? "";
+            if ((b.Control && b.Shift && b.Alt) == park || !IsPadBind(name))
+                continue;
+
+            // The radial button stays parked while the radial owns it.
+            if (!park && _parkedOwned != null && name.Equals(_parkedOwned, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             b.Control = park;

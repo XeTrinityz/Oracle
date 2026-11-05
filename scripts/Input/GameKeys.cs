@@ -26,8 +26,18 @@ internal static unsafe class GameKeys
     /// <summary>The game's names for the keys the menu uses. Escape stays live so the pause menu still opens.</summary>
     private static readonly string[] KeyNames = BuildNames();
 
+    /// <summary>
+    /// What the radial mutes on top of the menu's keys: the mouse axes, so pointing doesn't turn the camera, and the
+    /// buttons, so clicking a slot doesn't throw a punch.
+    /// </summary>
+    private static readonly string[] PointerNames =
+    {
+        "MouseX", "MouseY", "LeftMouseButton", "RightMouseButton", "MiddleMouseButton", "ThumbMouseButton", "ThumbMouseButton2", "MouseScrollUp", "MouseScrollDown",
+    };
+
     private static readonly List<(int Slot, int Index, int Number)> _muted = new();
     private static HashSet<int>? _keys;
+    private static HashSet<int>? _pointerKeys;
     private static int _mark = -1;
     private static int _stride;
     private static nint _input;
@@ -36,7 +46,13 @@ internal static unsafe class GameKeys
 
     private static HashSet<int> Keys => _keys ??= KeyNames.Select(n => new FName(n).Index).ToHashSet();
 
-    public static void Mute(PlayerController pc)
+    private static HashSet<int> PointerKeys => _pointerKeys ??= KeyNames.Concat(PointerNames).Select(n => new FName(n).Index).ToHashSet();
+
+    /// <summary>
+    /// Mutes the menu's keys, with <paramref name="pointer"/> the mouse as well, and with <paramref name="escape"/>
+    /// ESCAPE too, for the radial, where ESC closes it rather than pausing the game.
+    /// </summary>
+    public static void Mute(PlayerController pc, bool pointer = false, bool escape = false)
     {
         Unmute(pc);
         PlayerInput? input = pc.PlayerInput;
@@ -49,7 +65,9 @@ internal static unsafe class GameKeys
         if (_mark < 0)
             _mark = new FName("OracleMenuMuted").Index;
 
-        HashSet<int> keys = Keys;
+        HashSet<int> keys = pointer ? PointerKeys : Keys;
+        if (escape)
+            keys = new HashSet<int>(keys) { new FName("Escape").Index };
         for (int i = 0; i < count; i++)
         {
             int* name = (int*)(data + i * _stride);

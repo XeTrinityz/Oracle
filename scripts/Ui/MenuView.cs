@@ -751,12 +751,6 @@ internal static class MenuView
             return;
         }
 
-        if (Menu.IsPinnedPage(page))
-        {
-            Header(x, y, w, Decode("PINNED", _pageAge), count == 1 ? "1 ROW" : count + " ROWS", where, Theme.Low, accent, HeadScale, 2f);
-            return;
-        }
-
         int on = page.ActiveCount;
         string tag = Fmt.Plural(count, "FEATURE");
         if (on > 0)
@@ -797,6 +791,8 @@ internal static class MenuView
             Rect(left - S(Inset), cy - rowH * 0.5f + S(5), S(2), rowH - S(10), Theme.Accent, 0.75f);
         }
 
+        if (Favourites.Contains(f))
+            end += S(8) + RadialMark(end + S(8), cy, sel ? Theme.Hi : Theme.Mid);
         if (Settings.Hotkeys.TryGetValue(f.Id, out Keys hotkey))
             end += S(8) + Chip(end + S(8), cy, KeyName(hotkey), Theme.Mid, 0.08f);
         if (f.ChangesSave)
@@ -817,6 +813,15 @@ internal static class MenuView
             DrawChoice(c, right, cy, sel, key, accent);
         else
             DrawCommand(f, right, cy, sel, key, accent);
+    }
+
+    /// <summary>A small ring with a lit segment, after the label of a row that's on the favourites radial. Returns its width.</summary>
+    private static float RadialMark(float x, float cy, Rgba col)
+    {
+        float r = S(4.5f);
+        Shapes.Ring(x + r, cy, r - S(1.5f), r, col, 0.7f);
+        Shapes.Arc(x + r, cy, r - S(1.5f), r + S(0.5f), -120f, -60f, Theme.Accent, 1f);
+        return r * 2f;
     }
 
     /// <summary>Roughly how much of the row's right side its control takes, so a page tag never runs under it.</summary>
@@ -1156,7 +1161,7 @@ internal static class MenuView
             DrawMeta(f!, left, right, y + h - S(FooterPad) - S(HelpLineH) * 0.5f, accent);
     }
 
-    /// <summary>The footer's last line: hotkey, default value, option count and pin, whichever apply.</summary>
+    /// <summary>The footer's last line: hotkey, default value, option count and radial slot, whichever apply.</summary>
     private static void DrawMeta(Feature f, float left, float right, float cy, Rgba accent)
     {
         float mx = left;
@@ -1181,8 +1186,10 @@ internal static class MenuView
         if (f is Choice { Labels.Length: > 2 } many)
             TextMid(mx, cy, "OPTION " + (many.Index + 1) + " OF " + many.Labels.Length, Theme.Low, TagScale);
 
-        if (Menu.IsPinned(f))
-            TextRight(right, cy, "PINNED", accent, TagScale);
+        // Page and slot on the radial, kept short so it never runs into the hotkey and default on the left.
+        int at = Favourites.IndexOf(f.Id);
+        if (at >= 0)
+            TextRight(right, cy, "RADIAL " + (at / Favourites.PerPage + 1) + "-" + (at % Favourites.PerPage + 1), accent, TagScale);
     }
 
     private static string HelpText(Feature f)
@@ -1201,8 +1208,6 @@ internal static class MenuView
             return "Type to narrow it down: every word must match. BACKSPACE erases, ESC ends the search.";
         if (Menu.IsActivePage(page))
             return "Everything you switch on shows up here, so it's easy to find and switch off again.";
-        if (Menu.IsPinnedPage(page))
-            return "Your own shortlist. Pin any row on any page and it shows up here.";
 
         if (_contents.TryGetValue(page, out string? text))
             return text;
@@ -1284,7 +1289,7 @@ internal static class MenuView
         };
         bool adjusts = f is Slider or Choice;
         bool resets = f is { IsDefault: false } and not Command;
-        string pin = f != null && Menu.IsPinned(f) ? "UNPIN" : "PIN";
+        string pin = f != null && Favourites.Contains(f) ? "MOVE ON RADIAL" : "ADD TO RADIAL";
 
         if (Pad.InUse)
         {
@@ -1293,7 +1298,8 @@ internal static class MenuView
                 _hints.Add(("A", verb));
                 if (resets)
                     _hints.Add(("X", "RESET"));
-                _hints.Add(("Y", pin));
+                if (f is { Bindable: true })
+                    _hints.Add(("Y", pin));
                 _hints.Add(("LB RB", "PAGE"));
                 _hints.Add(("B", "BACK"));
             }
@@ -1316,7 +1322,8 @@ internal static class MenuView
                 _hints.Add(("DEL", "RESET"));
             if (f is { Bindable: true, IsSetting: false })
                 _hints.Add(("INS", "BIND"));
-            _hints.Add(("HOME", pin));
+            if (f is { Bindable: true })
+                _hints.Add(("HOME", pin));
         }
         else if (!Menu.Searching)
             _hints.Add(("ENTER", "OPEN"));

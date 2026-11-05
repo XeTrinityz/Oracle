@@ -176,6 +176,12 @@ internal static class Layout
         {
             new("APPEARANCE", "menu_size", "menu_position", "menu_color", "menu_font", "rainbow_speed", "menu_preview", "menu_effects", "low_end_mode", "active_list"),
         }),
+        ("SYSTEM/RADIAL", new Section[]
+        {
+            new("FAVOURITES", "radial_enabled", "radial_arrange", "radial_clear"),
+            new("CONTROLS", "radial_key", "radial_mode", "radial_mouse", "radial_pad"),
+            new("LOOK", "radial_slots", "radial_size"),
+        }),
         ("SYSTEM/CONTROLLER", new Section[]
         {
             new("XBOX CONTROLLER", "pad_enabled", "pad_hold"),

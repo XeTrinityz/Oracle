@@ -45,8 +45,10 @@ internal static class App
             return;
         _started = false;
 
+        Radial.Shutdown();
         Menu.Close();
         Pad.Shutdown();
+        Shapes.Release();
         Settings.Flush();
         Each("shutdown", m => m.Shutdown());
         Catalog.RestoreConsoleProps();
@@ -55,6 +57,7 @@ internal static class App
 
     public static void EnterWorld()
     {
+        Radial.Close();
         Menu.Close();
         World.Forget();
         if (!Characters.I.Busy)
@@ -65,6 +68,7 @@ internal static class App
 
     public static void EnterMenu()
     {
+        Radial.Close();
         Menu.Close();
         World.Forget();
     }
@@ -132,6 +136,7 @@ internal static class App
         }
 
         Safe.Run("controller", Pad.Frame);
+        Safe.Run("radial", Radial.Frame);
         Safe.Run("fallback", Fallback.Frame);
         Safe.Run("overlay", () => Overlay.Draw(canvas));
     }

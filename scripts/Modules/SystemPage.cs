@@ -32,6 +32,8 @@ internal sealed class SystemPage : Module
         AddSlider("pad_hold", "HOLD TO OPEN", "Seconds to hold the controller's open button (set in settings.toml, BACK by default). A shorter tap on BACK still opens the map.", 0.5f, 0f, 1.5f, 0.1f, 0.5f,
             v => v <= 0f ? "PRESS" : Fmt.Tenths(v), v => Pad.OpenHold = v).Setting().Stored("gamepad", "open_hold");
 
+        BuildRadial();
+
         AddCommand("all_off", "TURN EVERYTHING OFF", "Switches every cheat off and puts the game back to normal.", Catalog.TurnAllOff).Setting();
 
         AddCredit("credit_original", "ZEIDCEZEY",
@@ -42,7 +44,35 @@ internal sealed class SystemPage : Module
             ProjectUrl);
     }
 
-    public const string OriginalUrl = "https://www.nexusmods.com/batmanarkhamknight/mods/3597";
+    /// <summary>SYSTEM > RADIAL: the favourites wheel's keys, look and layout.</summary>
+    private static void BuildRadial()
+    {
+        AddToggle("radial_enabled", "FAVOURITES RADIAL",
+            "A wheel of your favourite features. Hold the radial key, point at a slot and let go to use it. Put any row on it with HOME (Y on a controller).",
+            on => Radial.Enabled = on, on: true).Setting();
+        AddCommand("radial_arrange", "ARRANGE RADIAL",
+            "Opens the radial to rearrange it: pick a favourite up with ENTER and put it in another slot or page, or take it off with DELETE.",
+            () => Radial.BeginArrange(null)).Setting();
+        AddCommand("radial_clear", "CLEAR RADIAL", "Takes every favourite off the radial.", Favourites.ClearAll).Setting().Confirmed();
+
+        AddChoice("radial_key", "RADIAL KEY", "Hold this to open the radial over the game. MOUSE 4 and 5 (the side buttons), Z, M and CAPS LOCK do nothing in the game by default; the middle button does.",
+            Radial.KeyIds, Radial.KeyNames, Radial.SetKey).Setting();
+        AddChoice("radial_mode", "RADIAL MODE",
+            "HOLD: let go of the radial key to use the slot you're pointing at. TAP: the radial stays open until you press the key again, and a click uses a slot.",
+            new[] { "hold", "tap" }, new[] { "HOLD", "TAP" }, i => Radial.HoldMode = i == 0).Setting();
+        AddSlider("radial_mouse", "POINTER SPEED", "How far the mouse moves the radial's pointer. WASD and the arrow keys point too, and the number keys use a slot at once.",
+            1f, 0.25f, 3f, 0.25f, 1f, Fmt.Times, v => Radial.MouseSpeed = v).Setting();
+        AddChoice("radial_pad", "RADIAL BUTTON",
+            "Hold this on a controller to open the radial, and point with either stick. R3 or L3 belongs to the radial while it's set here, so the game no longer sees that click.",
+            Radial.PadIds, Radial.PadNames, i => Radial.PadButton = Radial.PadIds[Math.Clamp(i, 0, Radial.PadIds.Length - 1)])
+            .Setting().Stored("gamepad", "radial_button");
+
+        AddSlider("radial_slots", "SLOTS PER PAGE", "How many favourites fit on one page of the radial. Your favourites keep their order when it changes; past a page, they flow onto the next.",
+            8f, Favourites.MinPerPage, Favourites.MaxPerPage, 1f, 8f, v => ((int)v).ToString(), v => Favourites.PerPage = Math.Clamp((int)v, Favourites.MinPerPage, Favourites.MaxPerPage)).Setting();
+        AddSlider("radial_size", "RADIAL SIZE", "How large the radial is drawn.", 1f, 0.6f, 1.4f, 0.05f, 1f, Fmt.Percent, v => Radial.Size = v).Setting();
+    }
+
+    public const string OriginalUrl ="https://www.nexusmods.com/batmanarkhamknight/mods/3597";
     public const string ProjectUrl = "https://github.com/XeTrinityz/Oracle";
 
     /// <summary>A credits row: selecting it opens that person's page in the browser.</summary>

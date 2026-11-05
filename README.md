@@ -32,8 +32,14 @@ teleport to waypoint with the city district map (`cells.cache`).
 guarded, so a failing feature logs an error instead of closing the game. Unloading the mod puts back every value it
 changed. Settings moved to their own `settings.toml`, so updating the mod can't overwrite them.
 
-**The menu.** A fixed-size panelled menu with an ACTIVE page for everything
-switched on and a PINNED page for your own shortlist (HOME on any row, Y on a controller). Type anywhere in the menu to
+**Favourites radial.** Put any feature on a wheel of your own: press HOME on a row (Y on a controller) and place it in
+any slot on any page. In game, hold the radial key (mouse 4 by default, R3 on a controller), point at a slot with
+the mouse, a stick or WASD, and let go to use it. Number keys use a slot at once. Q / E (LB / RB) turn the page, up
+to 9 pages of 4 to 12 slots. Set the key, HOLD or TAP mode, size and slots per page under SYSTEM > RADIAL, where
+ARRANGE RADIAL lets you move favourites around. A used slot does what its hotkey would. Rows that change your save
+can't go on it.
+
+**The menu.** A fixed-size panelled menu with an ACTIVE page for everything switched on. Type anywhere in the menu to
 search every feature on every page. The key strip underneath changes with the selected row, and the footer shows its
 help, hotkey and default value. PREVIEW PAGES shows each page's rows as you browse the page list. SYSTEM > ASSETS browses the game's own loaded textures and fonts, and MENU FONT draws the menu in any of them. Hotkeys are bound from the menu (INSERT on a row; one key can hold several features),
 and each page remembers the row you were on.

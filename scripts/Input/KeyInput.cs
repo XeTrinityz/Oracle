@@ -2,7 +2,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace CeZeY.Oracle;
 
-/// <summary>Routes a key press: the game's own use first, then the menu, then hotkeys.</summary>
+/// <summary>Routes a key press: the game's own use first, then the radial, the menu, then hotkeys.</summary>
 internal static class KeyInput
 {
     public static void Pressed(Keys key)
@@ -10,6 +10,20 @@ internal static class KeyInput
         Pad.KeyboardUsed();
         if (Menu.Binding == null && Characters.I.EntryKey(key))
             return;
+
+        // The open radial takes every key, so a number picks a slot instead of running a hotkey. The menu key
+        // swaps the radial for the menu.
+        if (Radial.IsLive)
+        {
+            if (key == Settings.MenuKey)
+            {
+                Radial.Close();
+                Menu.Open();
+            }
+            else
+                Radial.Press(key);
+            return;
+        }
 
         if (key == Settings.MenuKey && Menu.Binding == null)
         {
@@ -22,6 +36,10 @@ internal static class KeyInput
             Menu.Press(key, false);
             return;
         }
+
+        // A hotkey saved on a key that later became the radial key gives way to the radial.
+        if (key == Radial.Key && Radial.Enabled)
+            return;
 
         if (Settings.TryKey(key, out IReadOnlyList<Feature> features))
             Catalog.Hotkey(features);
@@ -62,6 +80,8 @@ internal static class Fallback
         _watch.AddRange(Menu.ControlKeys);
         if (Menu.IsOpen)
             _watch.AddRange(Menu.TypingKeys);
+        if (Radial.IsLive)
+            _watch.AddRange(Radial.WatchKeys);
         _watch.AddRange(Settings.BoundKeys);
         if (Characters.I.PlayingOther)
             _watch.Add(Keys.E);
