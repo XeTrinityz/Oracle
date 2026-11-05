@@ -70,6 +70,12 @@ with boxes, names, health and tracers. Select what you're aiming at, or pick fro
 grab it and carry it around (and throw it), place it at your crosshair, nudge, turn and resize it, freeze it, switch
 off its collision, or remove it. REMOVE only hides, so missions can't break, and RESTORE puts anything you changed back.
 
+**Camera, five tabs.** FREE CAMERA flies the view anywhere (Batman holds still, or the whole world freezes), with
+smooth moves, tilt and zoom, and puts Batman down under the camera when you're done. TRIPOD leaves the camera on the
+spot and gives you Batman back, turning to follow him. FIRST PERSON on foot, camera tilt, camera through walls,
+hide the game HUD, cinematic bars, swap shoulder, and a default Batmobile view including the bonnet camera. Field
+of view now changes the finished picture, so it can no longer creep wider after aiming.
+
 **Batmobile, five tabs.** Autopilot to a waypoint or objective along the roads, remote control without the gadget,
 repair, EMP-proofing and self-righting, engine power and tyre grip, a jump with floaty air gravity, auto combat that
 fights for you while you drive, shooting down incoming missiles, every weapon armed, no reload or overheat, a

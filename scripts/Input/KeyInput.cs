@@ -41,7 +41,7 @@ internal static class KeyInput
         if (key == Radial.Key && Radial.Enabled)
             return;
 
-        if (Settings.TryKey(key, out IReadOnlyList<Feature> features) && !WorldEditor.I.Claims(key, features))
+        if (Settings.TryKey(key, out IReadOnlyList<Feature> features) && !WorldEditor.I.Claims(key, features) && !FreeCam.I.Claims(key, features))
             Catalog.Hotkey(features);
     }
 }

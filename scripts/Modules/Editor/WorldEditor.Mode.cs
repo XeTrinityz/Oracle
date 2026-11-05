@@ -72,6 +72,8 @@ internal sealed partial class WorldEditor
     private void EnterMode()
     {
         Transition.RequireIdle();
+        if (FreeCam.I.Active)
+            throw new InvalidOperationException("turn off FREE CAMERA and TRIPOD first");
         if (World.Pawn is not RPawnPlayer p || World.Pc is not { } pc)
             throw new InvalidOperationException("get out of the Batmobile first");
 

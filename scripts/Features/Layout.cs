@@ -177,11 +177,13 @@ internal static class Layout
         {
             new("PRESETS", "fov_preset", "cam_reset"),
             new("FIELD OF VIEW", "fov_world", "fov_aim"),
-            new("EFFECTS", "cam_steady", "cam_no_shake", "fov_readout"),
+            new("EFFECTS", "cam_steady", "cam_no_shake", "cam_no_collision", "cam_tilt"),
+            new("SCREEN", "cam_hide_hud", "cam_bars", "fov_readout"),
         }),
         ("CAMERA/ON FOOT", new Section[]
         {
-            new("POSITION", "cam_distance", "cam_height", "cam_shoulder", "cam_pivot"),
+            new("POSITION", "cam_distance", "cam_height", "cam_shoulder", "cam_pivot", "cam_swap_shoulder"),
+            new("FIRST PERSON", "cam_first_person", "cam_fp_forward"),
         }),
         ("CAMERA/GLIDING", new Section[]
         {
@@ -189,7 +191,13 @@ internal static class Layout
         }),
         ("CAMERA/BATMOBILE", new Section[]
         {
-            new("DRIVING VIEW", "car_fov", "car_distance", "car_kick"),
+            new("DRIVING VIEW", "car_view", "car_view_next", "car_fov", "car_distance", "car_kick"),
+        }),
+        ("CAMERA/FREE CAMERA", new Section[]
+        {
+            new("FLY", "cam_free", "cam_free_speed", "cam_free_smooth", "cam_free_look", "cam_free_freeze"),
+            new("TRIPOD", "cam_tripod", "cam_tripod_track"),
+            new("OPTIONS", "cam_free_hud"),
         }),
         ("MUSIC", new Section[]
         {
