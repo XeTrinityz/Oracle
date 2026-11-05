@@ -218,7 +218,9 @@ internal static class Layout
         }),
         ("SYSTEM/GAME", new Section[]
         {
-            new("BEHAVIOUR", "run_unfocused", "game_debug_keys"),
+            new("BEHAVIOUR", "run_unfocused", "pad_unfocused", "game_debug_keys"),
+            new("GRAPHICS", "character_detail"),
+            new("PERFORMANCE", "frame_cap"),
         }),
         ("SYSTEM/SAVES", new Section[]
         {

@@ -1,0 +1,219 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
+namespace CeZeY.Oracle;
+
+/// <summary>
+/// The engine's live render settings (the [SystemSettings] values in BmSystemSettings.ini), changed through the
+/// shipping exe's "scale set" console command. The game's own value is remembered the first time Oracle changes
+/// a setting, so it can be put back exactly.
+/// <para>
+/// "scale set" also saves the new value into BmSystemSettings.ini, which would keep Oracle's value after the mod
+/// is gone. So every change is followed by writing the game's value back into the ini, and the game's values
+/// are kept in render_originals.txt until put back, so a crash or quit with an override on is repaired at the
+/// next start.
+/// </para>
+/// </summary>
+internal static class RenderSettings
+{
+    // Survives hot reload, so a reload over a live override still knows the game's real value.
+    private static Dictionary<string, string> Originals =>
+        Shared.Keep("RenderOriginals", () => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+    private static string IniPath => Path.GetFullPath(Path.Combine(App.Dir, "..", "..", "Config", "BmSystemSettings.ini"));
+
+    private static string RecordPath => Path.Combine(App.Dir, "render_originals.txt");
+
+    /// <summary>Whether the console is reachable yet. Nothing can be read or changed before it is.</summary>
+    public static bool Ready => World.Pc != null;
+
+    /// <summary>Reads the game values left by an earlier session and puts them back into the ini.</summary>
+    public static void Load()
+    {
+        try
+        {
+            if (File.Exists(RecordPath))
+            {
+                foreach (string line in File.ReadLines(RecordPath))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq > 0)
+                        Originals.TryAdd(line.Substring(0, eq).Trim(), line.Substring(eq + 1).Trim());
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Info("render settings record read failed: " + e.Message);
+        }
+
+        RepairIni();
+    }
+
+    // Any "scale set" re-saves every live value, so after each one all of the game's values go back.
+    private static void RepairIni()
+    {
+        foreach ((string name, string value) in Originals.ToArray())
+            WriteIni(name, value);
+    }
+
+    /// <summary>Sets a value, remembering the game's first. Returns false if the engine didn't accept it.</summary>
+    public static bool Override(string name, float value)
+    {
+        if (!Ready)
+            return false;
+
+        if (!Originals.ContainsKey(name))
+        {
+            string? original = Current(name);
+            if (original == null)
+            {
+                Log.Info("render setting " + name + ": couldn't read the game's value, so it won't be changed.");
+                return false;
+            }
+
+            Originals[name] = original;
+            SaveRecord();
+            Log.Info("render setting " + name + ": game value " + original);
+        }
+
+        bool ok = Set(name, value.ToString("0.0###", CultureInfo.InvariantCulture));
+        RepairIni();
+        return ok;
+    }
+
+    /// <summary>Puts the game's value back, if Oracle changed it.</summary>
+    public static void Restore(string name)
+    {
+        if (!Ready || !Originals.TryGetValue(name, out string? original))
+            return;
+
+        if (Set(name, original))
+        {
+            WriteIni(name, original);
+            Originals.Remove(name);
+            SaveRecord();
+        }
+
+        RepairIni();
+    }
+
+    private static void SaveRecord()
+    {
+        try
+        {
+            if (Originals.Count == 0)
+                File.Delete(RecordPath);
+            else
+                File.WriteAllLines(RecordPath, Originals.Select(p => p.Key + "=" + p.Value));
+        }
+        catch (Exception e)
+        {
+            Log.Info("render settings record write failed: " + e.Message);
+        }
+    }
+
+    /// <summary>Rewrites one [SystemSettings] line of the ini, leaving every other byte as it was.</summary>
+    private static void WriteIni(string name, string value)
+    {
+        try
+        {
+            var latin1 = System.Text.Encoding.Latin1;
+            string text = File.ReadAllText(IniPath, latin1);
+            string[] lines = text.Split('\n');
+            bool inSection = false;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].TrimEnd('\r').Trim();
+                if (line.StartsWith('['))
+                {
+                    inSection = line.Equals("[SystemSettings]", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+
+                int eq = line.IndexOf('=');
+                if (!inSection || eq <= 0 || !line.Substring(0, eq).Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (line.Substring(eq + 1).Trim() == value)
+                    return;
+
+                lines[i] = name + "=" + value + (lines[i].EndsWith('\r') ? "\r" : "");
+                File.WriteAllText(IniPath, string.Join('\n', lines), latin1);
+                Log.Detail("render setting " + name + ": put the game's value " + value + " back into BmSystemSettings.ini");
+                return;
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Info("render setting " + name + ": ini write failed: " + e.Message);
+        }
+    }
+
+    public static void RestoreAll()
+    {
+        foreach (string name in Originals.Keys.ToArray())
+            Restore(name);
+    }
+
+    private static bool Set(string name, string value)
+    {
+        string reply = Cvars.Exec("scale set " + name + " " + value);
+        bool ok = reply.Contains(" set to ", StringComparison.OrdinalIgnoreCase);
+        if (!ok)
+            Log.Info("render setting " + name + " = " + value + " was refused: " + (reply.Trim().Length > 0 ? reply.Trim() : "no reply"));
+        else if (!_lastSent.TryGetValue(name, out string? last) || last != value)
+            Log.Info("render setting: " + reply.Trim());
+
+        _lastSent[name] = ok ? value : "";
+        return ok;
+    }
+
+    private static readonly Dictionary<string, string> _lastSent = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The live value from the engine's settings dump, or the saved one from the ini.</summary>
+    private static string? Current(string name)
+    {
+        var pattern = new Regex(@"\b" + Regex.Escape(name) + @"\b\s*[=:]?\s*(-?\d+(?:\.\d+)?|True|False)", RegexOptions.IgnoreCase);
+
+        Match live = pattern.Match(Cvars.Exec("scale dump"));
+        if (live.Success)
+            return live.Groups[1].Value;
+
+        string? saved = IniValue(name);
+        if (saved != null)
+            Log.Info("render setting " + name + ": read from the ini (the settings dump didn't list it)");
+        return saved;
+    }
+
+    /// <summary>The value saved in BmSystemSettings.ini's [SystemSettings] section.</summary>
+    private static string? IniValue(string name)
+    {
+        try
+        {
+            bool inSection = false;
+            foreach (string raw in File.ReadLines(IniPath))
+            {
+                string line = raw.Trim();
+                if (line.StartsWith('['))
+                {
+                    inSection = line.Equals("[SystemSettings]", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+
+                if (!inSection)
+                    continue;
+
+                int eq = line.IndexOf('=');
+                if (eq > 0 && line.Substring(0, eq).Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+                    return line.Substring(eq + 1).Trim();
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Info("render setting " + name + ": ini read failed: " + e.Message);
+        }
+
+        return null;
+    }
+}
