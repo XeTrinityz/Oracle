@@ -11,7 +11,7 @@ internal static class App
     /// <summary>Update order, and through registration the order of rows within each menu page.</summary>
     public static readonly Module[] Modules =
     {
-        Player.I, Status.I, GlideMod.I, Movement.I, Combat.I, Gadgets.I, Npcs.I, WorldEditor.I, Screen.I, Atmosphere.I, PostFx.I, Cosmetics.I, Rain.I, Lightning.I, Wind.I, Population.I, JokerVisions.I, JammedGuns.I, CameraRig.I, FreeCam.I, Batmobile.I,
+        Player.I, Status.I, GlideMod.I, Movement.I, Combat.I, Gadgets.I, Npcs.I, WorldEditor.I, Screen.I, Atmosphere.I, PostFx.I, LookPresets.I, LookCapture.I, Cosmetics.I, Rain.I, Lightning.I, Wind.I, Population.I, JokerVisions.I, JammedGuns.I, CameraRig.I, FreeCam.I, Batmobile.I,
         BatmobileSkin.I, BatmobileSound.I, CharacterSuit.I, Teleport.I, TeleportTools.I, TimeControl.I, Characters.I, Music.I, NewGamePlus.I, Progress.I, Riddler.I, Saves.I, SystemPage.I, GameTweaks.I, BuildingDetail.I, AssetBrowser.I, DebugKeys.I,
     };
 
