@@ -6,25 +6,27 @@ internal static class Menu
     public const float RepeatDelay = 0.38f;
     public const float RepeatRate = 0.06f;
     public const float ConfirmSeconds = 10f;
-    private const string OwnerName = "Oracle";
+    public const string OwnerName = "Oracle";
     private const int MaxResults = 80;
 
-    /// <summary>ACTIVE and PINNED sit above the catalog's pages.</summary>
-    private const int FixedPages = 2;
+    /// <summary>ACTIVE sits above the catalog's pages.</summary>
+    private const int FixedPages = 1;
 
-    /// <summary>Pins or unpins the selected row. Not reserved, so it can still be a hotkey while the menu is closed.</summary>
-    public const Keys PinKey = Keys.Home;
+    /// <summary>
+    /// Puts the selected row on the favourites radial, or moves it there. Not reserved, so it can still be a hotkey
+    /// while the menu is closed.
+    /// </summary>
+    public const Keys FavouriteKey = Keys.Home;
 
     /// <summary>Keys that drive the menu, which can't also be hotkeys.</summary>
     public static readonly Keys[] ControlKeys = { Keys.Up, Keys.Down, Keys.Left, Keys.Right, Keys.Enter, Keys.Tab, Keys.PageUp, Keys.PageDown, Keys.Back, Keys.Delete, Keys.Insert, Keys.Escape };
 
-    /// <summary>Keys the open menu also listens to: letters and digits type a search, plus the pin key.</summary>
+    /// <summary>Keys the open menu also listens to: letters and digits type a search, plus the favourite key.</summary>
     public static readonly Keys[] TypingKeys = BuildTypingKeys();
 
     private static readonly Keys[] RepeatKeys = { Keys.Left, Keys.Right, Keys.Up, Keys.Down };
     private static readonly float[] _held = { -1f, -1f, -1f, -1f };
     private static readonly MenuPage _activePage = new() { Title = "ACTIVE" };
-    private static readonly MenuPage _pinnedPage = new() { Title = "PINNED" };
     private static readonly MenuPage _searchPage = new() { Title = "SEARCH" };
     private static readonly Dictionary<MenuPage, int> _rowMemory = new();
     private static readonly List<SearchEntry> _index = new();
@@ -62,8 +64,6 @@ internal static class Menu
 
     public static bool IsActivePage(MenuPage page) => page == _activePage;
 
-    public static bool IsPinnedPage(MenuPage page) => page == _pinnedPage;
-
     public static Feature? Selected => Rows.Count == 0 ? null : Rows[Math.Clamp(RowIndex, 0, Rows.Count - 1)].Item;
 
     /// <summary>Row awaiting a second press before it runs.</summary>
@@ -78,7 +78,7 @@ internal static class Menu
     /// <summary>The last key pressed while binding belongs to the menu, so the prompt stays open.</summary>
     public static bool BindRefused { get; private set; }
 
-    public static bool IsReserved(Keys key) => key == Settings.MenuKey || Array.IndexOf(ControlKeys, key) >= 0;
+    public static bool IsReserved(Keys key) => key == Settings.MenuKey || key == Radial.Key || Array.IndexOf(ControlKeys, key) >= 0;
 
     /// <summary>Last command run, for the row's DONE or FAILED flash.</summary>
     public static Feature? Flashed { get; private set; }
@@ -106,11 +106,8 @@ internal static class Menu
     public static MenuPage PageAt(int index) => index switch
     {
         0 => _activePage,
-        1 => _pinnedPage,
         _ => Catalog.Pages[index - FixedPages],
     };
-
-    public static bool IsPinned(Feature f) => Settings.Pinned.Contains(f.Id);
 
     public static void Toggle()
     {
@@ -131,7 +128,6 @@ internal static class Menu
         IsOpen = true;
         PageIndex = Math.Clamp(PageIndex, 0, PageCount - 1);
         RebuildActivePage();
-        RebuildPinnedPage();
         ResumePosition();
         Confirming = null;
         Binding = null;
@@ -140,7 +136,7 @@ internal static class Menu
         HoldInput();
     }
 
-    /// <summary>Reopens where the player left off. ACTIVE and PINNED can change while closed, so the row is re-checked.</summary>
+    /// <summary>Reopens where the player left off. ACTIVE can change while closed, so the row is re-checked.</summary>
     private static void ResumePosition()
     {
         if (RowIndex >= Rows.Count || Rows[RowIndex].Item == null)
@@ -157,6 +153,7 @@ internal static class Menu
         IsOpen = false;
         Confirming = null;
         Binding = null;
+        Radial.EndArrange();
         Array.Fill(_held, -1f);
         Pad.MenuClosed();
 
@@ -169,8 +166,9 @@ internal static class Menu
     /// <summary>
     /// Holds movement and mutes the game's bindings on the keys the menu uses, so typing a search or pressing ENTER
     /// doesn't also fire gadgets and moves. Oracle reads its own keys from window messages, so the menu still hears them.
+    /// The radial also mutes the mouse (<paramref name="pointer"/>), so pointing and clicking don't turn the camera or strike.
     /// </summary>
-    private static void HoldInput()
+    public static void HoldInput(bool pointer = false, bool escape = false)
     {
         Safe.Run("menu input", () =>
         {
@@ -183,7 +181,7 @@ internal static class Menu
         Safe.Run("menu keys", () =>
         {
             if (World.Pc is { } pc)
-                GameKeys.Mute(pc);
+                GameKeys.Mute(pc, pointer, escape);
         });
     }
 
@@ -241,6 +239,9 @@ internal static class Menu
     /// <summary>Handles a menu control. Returns true when the key belonged to the menu.</summary>
     public static bool Press(Keys key, bool repeat)
     {
+        if (Radial.Arranging)
+            return Radial.EditorPress(key, repeat);
+
         if (Binding != null)
         {
             if (!repeat)
@@ -277,10 +278,10 @@ internal static class Menu
         if (Searching && PressInSearch(key))
             return true;
 
-        if (key == PinKey)
+        if (key == FavouriteKey)
         {
             if (!repeat)
-                TogglePin(f);
+                Favourite(f);
             return true;
         }
 
@@ -475,8 +476,6 @@ internal static class Menu
             SubIndex = 0;
             if (PageIndex == 0)
                 RebuildActivePage();
-            else if (PageIndex == 1)
-                RebuildPinnedPage();
             if (Level == 2 && Top.HasSub)
                 Level = 1;
         }
@@ -536,54 +535,28 @@ internal static class Menu
             _activePage.Rows.Add(new MenuRow { Header = "NOTHING RUNNING" });
     }
 
-    private static void RebuildPinnedPage()
-    {
-        _pinnedPage.Rows.Clear();
-        var paths = new Dictionary<Feature, string>();
-        foreach ((MenuPage page, string path) in Leaves())
-        {
-            foreach (MenuRow row in page.Rows)
-            {
-                if (row.Item != null)
-                    paths.TryAdd(row.Item, path);
-            }
-        }
-
-        foreach (string id in Settings.Pinned)
-        {
-            if (Catalog.ById.TryGetValue(id, out Feature? f))
-                _pinnedPage.Rows.Add(new MenuRow { Item = f, Path = paths.GetValueOrDefault(f) });
-        }
-
-        if (_pinnedPage.Rows.Count == 0)
-        {
-            _pinnedPage.Rows.Add(new MenuRow { Header = "NOTHING PINNED YET" });
-            _pinnedPage.Rows.Add(new MenuRow { Header = Pad.InUse ? "PRESS Y ON ANY ROW TO PIN IT" : "PRESS HOME ON ANY ROW TO PIN IT" });
-        }
-    }
-
-    private static void TogglePin(Feature? f)
+    /// <summary>
+    /// HOME on a row: opens the radial editor with the row in hand, to place it in any slot on any page, or to
+    /// move or remove it if it's already there.
+    /// </summary>
+    private static void Favourite(Feature? f)
     {
         if (f == null)
             return;
 
-        if (!Settings.Pinned.Remove(f.Id))
-            Settings.Pinned.Add(f.Id);
-        Settings.MarkDirty();
-
-        if (Current != _pinnedPage)
+        if (!Favourites.CanHold(f))
+        {
+            Overlay.Notice(f.Label, "CHANGES YOUR SAVE, SO IT CAN'T GO ON THE RADIAL", false);
             return;
+        }
 
-        int at = RowIndex;
-        RebuildPinnedPage();
-        RowIndex = at < Rows.Count && Rows[at].Item != null ? at : NextRow(Math.Min(at, Rows.Count), -1);
-        if (Selected == null && Level == 2)
-            Level = 0;
+        Confirming = null;
+        Radial.BeginArrange(f);
     }
 
     private static Keys[] BuildTypingKeys()
     {
-        var keys = new List<Keys> { Keys.Space, PinKey };
+        var keys = new List<Keys> { Keys.Space, FavouriteKey };
         for (Keys k = Keys.A; k <= Keys.Z; k++)
             keys.Add(k);
         for (Keys k = Keys.D0; k <= Keys.D9; k++)

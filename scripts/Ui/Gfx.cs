@@ -40,6 +40,9 @@ internal static class Gfx
 
     public static float S(float v) => v * Scale;
 
+    /// <summary>The plain white texture every rectangle and shape is drawn with. Null until it has loaded.</summary>
+    public static Texture2D? WhiteTexture => _white is { IsValid: true } ? _white : null;
+
     /// <summary>Selects the canvas for this frame. Returns false until the drawing resources have loaded.</summary>
     public static bool Begin(Canvas canvas, out Font? previous)
     {

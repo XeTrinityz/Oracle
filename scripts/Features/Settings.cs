@@ -21,9 +21,6 @@ internal static class Settings
     /// <summary>Hotkeys by feature id. Menu rebinding and hand edits share this one source.</summary>
     public static readonly Dictionary<string, Keys> Hotkeys = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Feature ids on the PINNED page, in the order they were pinned.</summary>
-    public static readonly List<string> Pinned = new();
-
     private static readonly Dictionary<Keys, List<Feature>> _byKey = new();
     private static DateTime _stamp = DateTime.MinValue;
     private static bool _dirty;
@@ -153,15 +150,20 @@ internal static class Settings
         PadOpenButton = Text(Section(root, "gamepad"), "open_button", "back");
         Remember = !general.TryGetValue("remember_cheats", out object? keep) || keep is not bool remember || remember;
 
-        Pinned.Clear();
-        if (general.TryGetValue("pinned", out object? pins) && pins is TomlArray list)
+        // The favourites radial replaced the PINNED page: a settings file from before it starts the radial with the pins.
+        if (general.TryGetValue("radial", out object? radial) && radial is TomlArray slots)
+            Favourites.Load(slots);
+        else if (general.TryGetValue("pinned", out object? pins) && pins is TomlArray pinned)
         {
-            foreach (object? pin in list)
+            Favourites.FromPins(pinned.OfType<string>());
+            if (Favourites.Count > 0)
             {
-                if (pin is string id && Catalog.ById.ContainsKey(id) && !Pinned.Contains(id))
-                    Pinned.Add(id);
+                Log.Info("Moved " + Favourites.Count + " pinned rows onto the favourites radial.");
+                MarkDirty();
             }
         }
+        else
+            Favourites.Load(null);
 
         foreach (Feature f in Catalog.All)
         {
@@ -258,8 +260,9 @@ internal static class Settings
         sb.AppendLine("menu_key = \"" + MenuKey + "\"");
         sb.AppendLine("# true = writes every console command to Oracle.log, for bug reports");
         sb.AppendLine("diagnostics = " + (Log.Diagnostics ? "true" : "false"));
-        sb.AppendLine("# feature ids on the PINNED page. Press HOME on a row in the menu to pin or unpin it.");
-        sb.AppendLine("pinned = [" + string.Join(", ", Pinned.Select(id => "\"" + id + "\"")) + "]");
+        sb.AppendLine("# the favourites radial, slot by slot and page by page; \"\" is an empty slot. Easiest to arrange in the menu:");
+        sb.AppendLine("# HOME on any row, or SYSTEM > RADIAL > ARRANGE RADIAL.");
+        sb.AppendLine("radial = " + Favourites.Toml());
         WriteValues(sb, "general");
         sb.AppendLine();
         sb.AppendLine("[gamepad]");
