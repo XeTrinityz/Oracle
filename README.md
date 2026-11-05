@@ -79,7 +79,8 @@ of view now changes the finished picture, so it can no longer creep wider after 
 **Batmobile, five tabs.** Autopilot to a waypoint or objective along the roads, remote control without the gadget,
 repair, EMP-proofing and self-righting, engine power and tyre grip, a jump with floaty air gravity, auto combat that
 fights for you while you drive, shooting down incoming missiles, every weapon armed, no reload or overheat, a
-speedometer with driving stats, and Showcase skins.
+speedometer with driving stats, Showcase skins, and ENGINE SOUND, which gives any skin the engine and tyre sounds of
+another (Arkham Knight, MK2, 1966, 1989, Tumbler, Batman v Superman, Arkham Asylum).
 
 **Player status.** CAN'T DIE (hits still hurt but leave you on 1 health), DAMAGE TAKEN from a tenth to five times,
 health regeneration, unbreakable armour, no hit reactions, no stuns, invisible to thugs as well as drones, and a

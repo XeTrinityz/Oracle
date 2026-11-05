@@ -12,7 +12,7 @@ internal static class App
     public static readonly Module[] Modules =
     {
         Player.I, Status.I, GlideMod.I, Movement.I, Combat.I, Gadgets.I, Npcs.I, WorldEditor.I, Screen.I, Atmosphere.I, PostFx.I, Cosmetics.I, Rain.I, Lightning.I, Wind.I, Population.I, JokerVisions.I, JammedGuns.I, CameraRig.I, FreeCam.I, Batmobile.I,
-        BatmobileSkin.I, CharacterSuit.I, Teleport.I, TeleportTools.I, TimeControl.I, Characters.I, Music.I, NewGamePlus.I, Progress.I, Riddler.I, Saves.I, SystemPage.I, AssetBrowser.I, DebugKeys.I,
+        BatmobileSkin.I, BatmobileSound.I, CharacterSuit.I, Teleport.I, TeleportTools.I, TimeControl.I, Characters.I, Music.I, NewGamePlus.I, Progress.I, Riddler.I, Saves.I, SystemPage.I, AssetBrowser.I, DebugKeys.I,
     };
 
     private static FrameTimer _tick;

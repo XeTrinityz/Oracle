@@ -82,6 +82,7 @@ internal static class Layout
         ("BATMOBILE/SKIN", new Section[]
         {
             new("SHOWCASE SKINS", "batmobile_skin", "apply_batmobile_skin", "cancel_batmobile_skin"),
+            new("SOUND", "batmobile_engine_sound"),
         }),
         ("TELEPORT/MAP", new Section[]
         {
