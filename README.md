@@ -30,9 +30,13 @@ teleport to waypoint with the city district map (`cells.cache`).
 
 **A rebuilt mod (3.0).** Oracle was rewritten from the ground up as modules on a small kernel. Every game hook is
 guarded, so a failing feature logs an error instead of closing the game. Unloading the mod puts back every value it
-changed. Settings moved to their own `settings.toml`, so updating the mod can't overwrite them. New floating-column
-menu with an ACTIVE page and a size setting, and hotkeys you bind from the menu (INSERT on a row; one key can hold
-several features).
+changed. Settings moved to their own `settings.toml`, so updating the mod can't overwrite them.
+
+**The menu.** A fixed-size panelled menu with an ACTIVE page for everything
+switched on and a PINNED page for your own shortlist (HOME on any row, Y on a controller). Type anywhere in the menu to
+search every feature on every page. The key strip underneath changes with the selected row, and the footer shows its
+help, hotkey and default value. PREVIEW PAGES shows each page's rows as you browse the page list. SYSTEM > ASSETS browses the game's own loaded textures and fonts, and MENU FONT draws the menu in any of them. Hotkeys are bound from the menu (INSERT on a row; one key can hold several features),
+and each page remembers the row you were on.
 
 **Combat.** AUTO FIGHT: Batman fights by himself with his whole moveset, countering and dodging every attack. It is a
 learning brain that ships trained (`fight_brain.txt`) and keeps learning from your fights. Also AUTO COUNTER, AUTO

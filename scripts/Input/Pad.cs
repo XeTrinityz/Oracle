@@ -332,8 +332,8 @@ internal static class Pad
             Menu.Press(Keys.PageDown, false);
         else if (Pressed(X))
             Menu.Press(Menu.Confirming != null ? Keys.Escape : Keys.Delete, false);
-        else if (Pressed(Y) && Menu.Confirming != null)
-            Menu.Press(Keys.Escape, false);
+        else if (Pressed(Y))
+            Menu.Press(Menu.Confirming != null ? Keys.Escape : Menu.PinKey, false);
 
         if (!Menu.IsOpen)
             return;

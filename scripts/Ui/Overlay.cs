@@ -143,6 +143,7 @@ internal static class Overlay
 
         float cx = Gfx.W * 0.5f;
         float cy = Gfx.H * 0.5f;
+        DrawSpinner(cx, cy - S(74), level);
         TextCentre(cx, cy - S(18), Fader.Caption, Theme.Accent, 0.86f, level);
 
         float bw = S(220);
@@ -156,6 +157,22 @@ internal static class Overlay
         float x1 = Math.Min(bx + bw, sx + seg);
         if (x1 > x0)
             Rect(x0, by, x1 - x0, S(2), Theme.Accent, 0.9f * level);
+    }
+
+    /// <summary>The game's own spinning bat symbol, a strip of square frames, tinted with the menu colour.</summary>
+    private const string SpinnerTexture = "BmFonts.Loading_DVDIcon";
+    private const float SpinnerFps = 14f;
+
+    private static void DrawSpinner(float cx, float cy, float level)
+    {
+        if (Find(SpinnerTexture) is not { } strip || strip.SizeY <= 0)
+            return;
+
+        int frames = Math.Max(1, strip.SizeX / strip.SizeY);
+        int frame = (int)(Time * SpinnerFps) % frames;
+        float size = S(64);
+        Rgba tint = Rgba.Mix(Theme.Accent, Theme.White, 0.3f);
+        Sprite(strip, cx - size * 0.5f, cy - size * 0.5f, size, size, frame * strip.SizeY, 0f, strip.SizeY, strip.SizeY, tint, level);
     }
 
     private static void DrawRunningList()

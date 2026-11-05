@@ -173,11 +173,15 @@ internal static class Layout
         }),
         ("SYSTEM/MENU", new Section[]
         {
-            new("APPEARANCE", "menu_size", "menu_color", "rainbow_speed", "low_end_mode", "active_list"),
+            new("APPEARANCE", "menu_size", "menu_position", "menu_color", "menu_font", "rainbow_speed", "menu_preview", "menu_effects", "low_end_mode", "active_list"),
         }),
         ("SYSTEM/CONTROLLER", new Section[]
         {
             new("XBOX CONTROLLER", "pad_enabled", "pad_hold"),
+        }),
+        ("SYSTEM/ASSETS", new Section[]
+        {
+            new("GAME ART", "asset_refresh", "asset_dump", "asset_filter", "asset_texture", "asset_preview"),
         }),
         ("SYSTEM/CREDITS", new Section[]
         {

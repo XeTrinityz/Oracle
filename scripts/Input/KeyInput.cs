@@ -60,6 +60,8 @@ internal static class Fallback
         _watch.Clear();
         _watch.Add(Settings.MenuKey);
         _watch.AddRange(Menu.ControlKeys);
+        if (Menu.IsOpen)
+            _watch.AddRange(Menu.TypingKeys);
         _watch.AddRange(Settings.BoundKeys);
         if (Characters.I.PlayingOther)
             _watch.Add(Keys.E);

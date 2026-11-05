@@ -34,7 +34,20 @@ internal readonly record struct Rgba(byte R, byte G, byte B, byte A = 255)
 /// <summary>The palette and the selected accent colour.</summary>
 internal static class Theme
 {
-    public static readonly Rgba Panel = new(7, 10, 13, 240);
+    /// <summary>The panel backing: a near-black tinted faintly toward the accent, like the glass of Oracle's screens.</summary>
+    public static Rgba Panel { get; private set; } = new(6, 13, 20, 240);
+
+    /// <summary>
+    /// A second, warm highlight for small markers (running rows, the LIVE light), after the orange dashes on
+    /// Oracle's displays. It turns cyan when the accent itself is warm, so the two always contrast.
+    /// </summary>
+    public static Rgba Signal { get; private set; } = new(255, 152, 54);
+
+    private static readonly Rgba PanelBase = new(6, 9, 13, 240);
+    private static readonly Rgba Orange = new(255, 152, 54);
+    private static readonly Rgba Cyan = new(96, 204, 244);
+    private const float PanelTint = 0.08f;
+
     public static readonly Rgba Hi = new(240, 246, 244);
     public static readonly Rgba Mid = new(176, 192, 188);
     public static readonly Rgba Low = new(112, 128, 126);
@@ -43,16 +56,20 @@ internal static class Theme
     public static readonly Rgba Off = new(46, 56, 58);
     public static readonly Rgba Warn = new(255, 96, 82);
 
-    public static readonly string[] Keys = { "emerald", "cyan", "blue", "violet", "magenta", "red", "orange", "gold", "white", "rainbow" };
-    public static readonly string[] Names = { "EMERALD", "CYAN", "BLUE", "VIOLET", "MAGENTA", "RED", "ORANGE", "GOLD", "WHITE", "RAINBOW" };
+    /// <summary>ORACLE, the default, is the cyan of Oracle's own screens. Saved picks are stored by key, so reordering is safe.</summary>
+    public static readonly string[] Keys = { "oracle", "emerald", "cyan", "blue", "violet", "magenta", "red", "orange", "gold", "white", "rainbow" };
+    public static readonly string[] Names = { "ORACLE", "EMERALD", "CYAN", "BLUE", "VIOLET", "MAGENTA", "RED", "ORANGE", "GOLD", "WHITE", "RAINBOW" };
 
     private static readonly Rgba[] Colors =
     {
-        new(54, 232, 162), new(64, 206, 255), new(84, 140, 255), new(158, 112, 255), new(240, 92, 220),
+        new(96, 204, 244), new(54, 232, 162), new(64, 206, 255), new(84, 140, 255), new(158, 112, 255), new(240, 92, 220),
         new(255, 76, 76), new(255, 146, 48), new(255, 204, 64), new(226, 234, 238),
     };
 
-    private const int Rainbow = 9;
+    /// <summary>Accents warm enough that the orange signal colour would blend in: RED, ORANGE, GOLD.</summary>
+    private static readonly int[] Warm = { 6, 7, 8 };
+
+    private const int Rainbow = 10;
     private const float RainbowPeriod = 9f;
     private const float LowEndStep = 1f / 15f;
     private const float WheelSaturation = 0.73f;
@@ -73,6 +90,7 @@ internal static class Theme
         if (Index != Rainbow)
         {
             Accent = Colors[Math.Clamp(Index, 0, Colors.Length - 1)];
+            Tint(Array.IndexOf(Warm, Index) >= 0);
             return;
         }
 
@@ -86,6 +104,15 @@ internal static class Theme
         }
 
         Accent = Wheel(_hue);
+        Tint(_hue < 0.17f || _hue > 0.93f);
+    }
+
+    /// <summary>Follows the accent: the panel glass picks up a trace of it, and the signal colour keeps its contrast.</summary>
+    private static void Tint(bool warm)
+    {
+        Rgba glass = Rgba.Mix(PanelBase, Accent, PanelTint);
+        Panel = glass with { A = PanelBase.A };
+        Signal = warm ? Cyan : Orange;
     }
 
     public static Rgba Swatch(int pick) => pick == Rainbow ? Wheel((float)(Gfx.Time / 9.0 % 1.0)) : Colors[Math.Clamp(pick, 0, Colors.Length - 1)];

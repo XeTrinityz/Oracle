@@ -4,6 +4,7 @@ Oracle.prev.log
 settings.toml
 settings.toml.tmp
 saved_spots.txt
+assets.txt
 camera_slots/
 
 # The player's own songs; only the instructions file ships

@@ -18,6 +18,15 @@ internal static class Gfx
     private static readonly Dictionary<int, float> _anim = new();
     private static Texture2D? _white;
     private static Font? _font;
+    private static Font? _engineFont;
+
+    /// <summary>The menu font everything falls back to, and the one other fonts are sized to match.</summary>
+    public const string DefaultFont = "BmFonts.EngineSmallFont";
+
+    private static string _fontPath = DefaultFont;
+    private static float _fontNorm = 1f;
+    private static bool _measureFont = true;
+    private static double _fontRetry;
 
     public static Canvas C = null!;
     public static float Scale = 1f;
@@ -37,8 +46,10 @@ internal static class Gfx
         previous = null;
         if (_white is not { IsValid: true })
             _white = Game.FindObject<Texture2D>("EngineResources.WhiteSquareTexture");
-        if (_font is not { IsValid: true })
-            _font = Game.FindObject<Font>("BmFonts.EngineSmallFont");
+        if (_engineFont is not { IsValid: true })
+            _engineFont = Game.FindObject<Font>(DefaultFont);
+        if (_font is not { IsValid: true } && Time >= _fontRetry)
+            FindFont();
         if (_white == null)
             return false;
 
@@ -46,9 +57,57 @@ internal static class Gfx
         Scale = Math.Clamp(canvas.ClipY / 1080f, 0.75f, 2.5f);
         Alpha = 1f;
         previous = canvas.Font;
-        if (_font != null)
-            canvas.Font = _font;
+        Font? font = _font is { IsValid: true } ? _font : _engineFont;
+        if (font != null)
+        {
+            if (_measureFont)
+                MeasureFont(canvas, font);
+            canvas.Font = font;
+        }
+
         return true;
+    }
+
+    /// <summary>Switches the menu font by its object path. A font that isn't loaded falls back to the engine font.</summary>
+    public static void UseFont(string path)
+    {
+        _fontPath = path.Length == 0 ? DefaultFont : path;
+        _font = null;
+        _fontRetry = 0;
+        _measureFont = true;
+    }
+
+    private static void FindFont()
+    {
+        Font? found = _fontPath == DefaultFont ? null : Game.FindObject<Font>(_fontPath);
+        if (found == null)
+            _fontRetry = Time + 2.0;   // not loaded (yet); the engine font stands in, and this is tried again
+        if (found != _font)
+        {
+            _font = found;
+            _measureFont = true;
+        }
+    }
+
+    /// <summary>
+    /// Fonts come in very different sizes, so each one is scaled to draw as tall as the engine font at the same
+    /// scale. Every cached width and height is for the old font, so they go too.
+    /// </summary>
+    private static void MeasureFont(Canvas canvas, Font font)
+    {
+        _measureFont = false;
+        _widths.Clear();
+        _heights.Clear();
+        _fontNorm = 1f;
+        if (_engineFont == null || font == _engineFont)
+            return;
+
+        canvas.Font = _engineFont;
+        canvas.TextSize("AQ", out _, out float reference, 1f, 1f);
+        canvas.Font = font;
+        canvas.TextSize("AQ", out _, out float height, 1f, 1f);
+        if (reference > 0f && height > 0f)
+            _fontNorm = Math.Clamp(reference / height, 0.05f, 20f);
     }
 
     public static void Rect(float x, float y, float w, float h, Rgba col, float alpha = 1f)
@@ -59,6 +118,45 @@ internal static class Gfx
         C.SetPos(MathF.Round(x), MathF.Round(y), 0f);
         var color = new FLinearColor { R = Linear[col.R], G = Linear[col.G], B = Linear[col.B], A = col.A / 255f * alpha * Alpha };
         C.DrawTile(_white!, MathF.Round(w), MathF.Round(h), 0f, 0f, 32f, 32f, color, false, EngineTypes.EBlendMode.BLEND_Translucent);
+    }
+
+    /// <summary>Draws a whole texture into a box, untinted.</summary>
+    public static void Image(Texture2D tex, float x, float y, float w, float h, float alpha = 1f) =>
+        Sprite(tex, x, y, w, h, 0f, 0f, tex.SizeX, tex.SizeY, Theme.White, alpha);
+
+    /// <summary>Draws part of a texture (u, v, width, height in texels) into a box, tinted.</summary>
+    public static void Sprite(Texture2D tex, float x, float y, float w, float h, float u, float v, float ul, float vl, Rgba tint, float alpha = 1f)
+    {
+        if (w <= 0f || h <= 0f)
+            return;
+
+        C.SetPos(MathF.Round(x), MathF.Round(y), 0f);
+        var color = new FLinearColor { R = Linear[tint.R], G = Linear[tint.G], B = Linear[tint.B], A = tint.A / 255f * alpha * Alpha };
+        C.DrawTile(tex, MathF.Round(w), MathF.Round(h), u, v, ul, vl, color, false, EngineTypes.EBlendMode.BLEND_Translucent);
+    }
+
+    private static readonly Dictionary<string, (Texture2D? Tex, double Retry)> _textures = new();
+
+    /// <summary>
+    /// A game texture by path, cached. Null while it isn't loaded; looked up again every few seconds, so a
+    /// texture that streams in later still turns up.
+    /// </summary>
+    public static Texture2D? Find(string path)
+    {
+        if (_textures.TryGetValue(path, out var entry) && (entry.Tex is { IsValid: true } || Time < entry.Retry))
+            return entry.Tex is { IsValid: true } ? entry.Tex : null;
+
+        Texture2D? tex = null;
+        try
+        {
+            tex = Game.FindObject<Texture2D>(path);
+        }
+        catch (Exception)
+        {
+        }
+
+        _textures[path] = (tex, Time + 3.0);
+        return tex;
     }
 
     /// <summary>A HUD box: the dark backing with an accent bar down its left edge.</summary>
@@ -84,7 +182,7 @@ internal static class Gfx
         if (_widths.Count >= MaxCachedWidths)
             _widths.Clear();
 
-        float size = scale * Scale;
+        float size = scale * Scale * _fontNorm;
         if (_widths.TryGetValue((text, size), out float w))
             return w;
 
@@ -95,7 +193,7 @@ internal static class Gfx
 
     public static float TextH(float scale)
     {
-        float size = scale * Scale;
+        float size = scale * Scale * _fontNorm;
         if (_heights.TryGetValue(size, out float h))
             return h;
 
@@ -108,7 +206,8 @@ internal static class Gfx
     {
         C.SetDrawColor(col.R, col.G, col.B, (byte)Math.Clamp(col.A * alpha * Alpha, 0f, 255f));
         C.SetPos(MathF.Round(x), MathF.Round(y), 0f);
-        C.DrawText(text, false, scale * Scale, scale * Scale, out _);
+        float size = scale * Scale * _fontNorm;
+        C.DrawText(text, false, size, size, out _);
         return TextW(text, scale);
     }
 

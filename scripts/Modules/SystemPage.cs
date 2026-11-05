@@ -19,6 +19,12 @@ internal sealed class SystemPage : Module
         Choice color = AddChoice("menu_color", "MENU COLOUR", "Colour of the Oracle menu, pop-ups and teleport screen. RAINBOW cycles through every colour.", Theme.Keys, Theme.Names, i => Theme.Index = i).Setting();
         color.Swatch = Theme.Swatch;
         AddSlider("rainbow_speed", "RAINBOW SPEED", "How fast the RAINBOW colour cycles. Only used when the menu colour is RAINBOW.", 1f, 0.25f, 3f, 0.25f, 1f, Fmt.Times, v => Theme.RainbowSpeed = v).Setting();
+        AddChoice("menu_position", "MENU POSITION", "Which side of the screen the menu sits on. On the right it grows leftward as tabs and rows open.",
+            new[] { "left", "centre", "right" }, new[] { "LEFT", "CENTRE", "RIGHT" }, i => MenuView.Position = i).Setting();
+        AddToggle("menu_preview", "PREVIEW PAGES", "Shows a page's tabs and rows, dimmed, while you move through the page list, so you can see what's on a page before opening it.",
+            on => MenuView.Preview = on).Setting();
+        AddToggle("menu_effects", "MENU EFFECTS", "Animates the menu: titles decode, rows cascade in, light sweeps the panel edges, the selection pulses and changed rows flash.",
+            on => MenuView.Effects = on, on: true).Setting();
         AddToggle("low_end_mode", "LOW-END MODE", "Lighter menu for slower PCs: the rainbow steps 15 times a second and the menu draws fewer effects.", on => Theme.LowEnd = on).Setting();
 
         AddToggle("pad_enabled", "CONTROLLER SUPPORT", "Use an Xbox controller in the menu: hold the open button to open it, D-pad or left stick to move, A to pick, X to reset, LB / RB for pages, B to close.", on => Pad.Enabled = on, on: true)

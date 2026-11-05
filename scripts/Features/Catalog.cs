@@ -8,6 +8,9 @@ internal sealed class MenuRow
 {
     public string? Header;
     public Feature? Item;
+
+    /// <summary>Where the row lives, like "PLAYER / GADGETS". Shown on pages that gather rows from elsewhere.</summary>
+    public string? Path;
 }
 
 internal sealed class MenuPage

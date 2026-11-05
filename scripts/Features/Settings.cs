@@ -21,6 +21,9 @@ internal static class Settings
     /// <summary>Hotkeys by feature id. Menu rebinding and hand edits share this one source.</summary>
     public static readonly Dictionary<string, Keys> Hotkeys = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Feature ids on the PINNED page, in the order they were pinned.</summary>
+    public static readonly List<string> Pinned = new();
+
     private static readonly Dictionary<Keys, List<Feature>> _byKey = new();
     private static DateTime _stamp = DateTime.MinValue;
     private static bool _dirty;
@@ -150,6 +153,16 @@ internal static class Settings
         PadOpenButton = Text(Section(root, "gamepad"), "open_button", "back");
         Remember = !general.TryGetValue("remember_cheats", out object? keep) || keep is not bool remember || remember;
 
+        Pinned.Clear();
+        if (general.TryGetValue("pinned", out object? pins) && pins is TomlArray list)
+        {
+            foreach (object? pin in list)
+            {
+                if (pin is string id && Catalog.ById.ContainsKey(id) && !Pinned.Contains(id))
+                    Pinned.Add(id);
+            }
+        }
+
         foreach (Feature f in Catalog.All)
         {
             if (f is Command)
@@ -245,6 +258,8 @@ internal static class Settings
         sb.AppendLine("menu_key = \"" + MenuKey + "\"");
         sb.AppendLine("# true = writes every console command to Oracle.log, for bug reports");
         sb.AppendLine("diagnostics = " + (Log.Diagnostics ? "true" : "false"));
+        sb.AppendLine("# feature ids on the PINNED page. Press HOME on a row in the menu to pin or unpin it.");
+        sb.AppendLine("pinned = [" + string.Join(", ", Pinned.Select(id => "\"" + id + "\"")) + "]");
         WriteValues(sb, "general");
         sb.AppendLine();
         sb.AppendLine("[gamepad]");
