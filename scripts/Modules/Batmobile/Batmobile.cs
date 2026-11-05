@@ -61,6 +61,7 @@ internal sealed partial class Batmobile : Module
         BuildAutopilot();
         BuildRemote();
         BuildAutoCombat();
+        BuildBattle();
 
         AddToggle("batmobile_invincible", "INVINCIBLE BATMOBILE", "The Batmobile's armour stays full, so it can't be destroyed.").EveryTick(ArmourTick);
 
@@ -89,6 +90,7 @@ internal sealed partial class Batmobile : Module
         _missileCap.Restore();
         RestoreRemoteAndPursuit();
         _radar.Restore();
+        _battleForcedCar = 0;
         _airFor = -1f;
         _foes.Clear();
         _barrage.Clear();
@@ -97,6 +99,7 @@ internal sealed partial class Batmobile : Module
 
     public override void Shutdown()
     {
+        LeaveForcedBattle("unloaded");
         StopAutopilot(null);
         RestoreBoost();
         RestoreDrive();

@@ -59,7 +59,7 @@ internal static class Layout
             new("REMOTE CONTROL", "remote_control", "remote_in_fights"),
             new("PROTECTION", "batmobile_invincible", "batmobile_emp_proof", "batmobile_self_right"),
             new("PERFORMANCE", "infinite_vehicle_boost", "batmobile_engine", "batmobile_grip"),
-            new("BATTLE MODE", "batmobile_battle_speed", "batmobile_double_dodge"),
+            new("BATTLE MODE", "batmobile_battle_any_skin", "batmobile_battle_unverified", "batmobile_battle_speed", "batmobile_double_dodge"),
         }),
         ("BATMOBILE/STUNTS", new Section[]
         {

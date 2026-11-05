@@ -225,6 +225,42 @@ internal static unsafe class GameKeys
         }
     }
 
+    /// <summary>
+    /// The FName index of every key whose binding runs the command (say "ToggleBattleMode"), read-only. Keys the
+    /// open menu has muted carry Oracle's mark instead of their name, so ask while the menu is closed.
+    /// </summary>
+    public static HashSet<int> KeysFor(PlayerInput input, string command)
+    {
+        var found = new HashSet<int>();
+        if (!Read(input.Bindings.Ptr, out byte* data, out int count))
+            return found;
+
+        for (int i = 0; i < count; i++)
+        {
+            byte* e = data + i * _stride;
+            if (Command(e) is { } text && Runs(text, command))
+                found.Add(*(int*)e);
+        }
+
+        return found;
+    }
+
+    private static bool Runs(string text, string command)
+    {
+        foreach (string raw in text.Split('|'))
+        {
+            string part = raw.Trim();
+            if (part.StartsWith("OnRelease ", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            int space = part.IndexOf(' ');
+            if ((space < 0 ? part : part[..space]).Equals(command, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>A binding's command string, or null when it has none.</summary>
     private static string? Command(byte* entry)
     {
