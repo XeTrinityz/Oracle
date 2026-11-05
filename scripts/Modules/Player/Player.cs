@@ -1,3 +1,4 @@
+using BmSDK;
 using BmSDK.BmGame;
 using static CeZeY.Oracle.Catalog;
 
@@ -29,8 +30,35 @@ internal sealed class Player : Module
         AddCommand("give_gadgets", "GIVE ALL GADGETS", "Adds every gadget to the gadget wheel.", () => World.RequireCheats().DebugGiveAllGadgets());
 
         AddConsoleToggle("silent_running", "SILENT RUNNING", "Your footsteps make no noise.", new ConsoleProp("RPawnPlayer", "bSilentRunning", "True", "False"));
-        AddConsoleToggle("drone_invisible", "INVISIBLE TO DRONES", "Drones and sentry guns can't see you.", new ConsoleProp("RPawnPlayer", "bInvisibleToDrones", "True", "False"));
+        DroneInvisible = AddToggle("drone_invisible", "INVISIBLE TO DRONES", "Sentry guns, flying drones and helicopter searchlights can't see you. Thugs, and the small drones they pilot, still can.");
     }
+
+    // ---- invisible to drones
+    // RPawnPlayer.bInvisibleToDrones does nothing: no script reads it and setting it changed nothing in game. What the
+    // game really asks:
+    // - Sentry guns: the native ARSentryGunBase::UpdatePlayerVis calls the event RPlayerController.ScriptIsHidden
+    //   with no Checker before anything else, and a hidden player isn't seen at all. Thugs pass themselves as the
+    //   Checker, so answering only the Checker-less call leaves them alone.
+    // - Flying drones and helicopters (RHelicopterBase): the native vision asks the event IsPlayerInvisible, which is
+    //   how the game hides you during conversations and door transitions. The small thug-piloted mini drones are the
+    //   same class but spot you some other way, so they still see you.
+
+    // The redirects can run before Build, so the toggle may still be null.
+    public Toggle? DroneInvisible;
+
+    private static bool Hidden => I.DroneInvisible is { On: true };
+
+    [Redirect(typeof(RPlayerController), nameof(RPlayerController.ScriptIsHidden))]
+    private static bool ScriptIsHiddenRedirect(RPlayerController self, RBMPawnAI checker, bool combatCheck)
+    {
+        if (Hidden && checker is not { IsValid: true })
+            return true;
+
+        return self.ScriptIsHidden(checker, combatCheck);
+    }
+
+    [Redirect(typeof(RHelicopterBase), nameof(RHelicopterBase.IsPlayerInvisible))]
+    private static bool HelicopterInvisibleRedirect(RHelicopterBase self) => Hidden || self.IsPlayerInvisible();
 
     public override void Shutdown()
     {
