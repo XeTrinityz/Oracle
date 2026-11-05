@@ -357,7 +357,8 @@ internal sealed class Npcs : Module
             d.Debug_Combat_CanAttack = can;
     }
 
-    private static void SetFrozen(Pawn p, bool frozen)
+    /// <summary>Stops or restarts one pawn: its tick, its controller's and its animation. The world editor uses it too.</summary>
+    internal static void SetFrozen(Pawn p, bool frozen)
     {
         if (p.bTickIsDisabled != frozen)
             p.SetTickIsDisabled(frozen);
@@ -886,6 +887,17 @@ internal sealed class Npcs : Module
             .OfType<RPawnVillain>()
             .FirstOrDefault(v => TeamOf(v) != WithYou && (v.IsHostile() || _pacified.Contains(v.Ptr)))
             ?? throw new InvalidOperationException("no enemy nearby to turn");
+
+        Turn(v);
+    }
+
+    /// <summary>One enemy switches sides, as TURN NEAREST ENEMY does. The world editor's TURN uses it on its selection.</summary>
+    internal void Turn(RPawnVillain v)
+    {
+        if (TeamOf(v) == WithYou)
+            throw new InvalidOperationException("already on your side");
+        if (!Standing(v))
+            throw new InvalidOperationException("they're down");
 
         if (_pacified.Remove(v.Ptr) && !v.IsHostile())
             v.SetHostile(true, new FName("None"));

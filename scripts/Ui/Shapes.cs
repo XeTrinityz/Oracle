@@ -93,6 +93,19 @@ internal static unsafe class Shapes
         Flush(col, alpha);
     }
 
+    /// <summary>
+    /// Adds a bar to a batch that <see cref="FlushLines"/> draws in one call, for many lines of one colour (the
+    /// editor's boxes). Nothing else may be drawn with Shapes between the two.
+    /// </summary>
+    public static void QueueLine(float x0, float y0, float x1, float y1, float thick) => AddLine(x0, y0, x1, y1, thick);
+
+    /// <summary>Draws every queued line, solid. Lines over the game world have no known colour under them to blend with.</summary>
+    public static void FlushLines(Rgba col)
+    {
+        if (_count > 0)
+            Flush(col with { A = 255 }, 1f);
+    }
+
     /// <summary>A solid triangle.</summary>
     public static void Triangle(float x0, float y0, float x1, float y1, float x2, float y2, Rgba col, float alpha)
     {

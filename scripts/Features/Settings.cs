@@ -167,7 +167,7 @@ internal static class Settings
 
         foreach (Feature f in Catalog.All)
         {
-            if (f is Command)
+            if (f is Command || f.NotSaved)
                 continue;
 
             bool wasActive = f.Active;
@@ -286,7 +286,7 @@ internal static class Settings
     {
         foreach (Feature f in Catalog.All)
         {
-            if (f.Section == section && f.Toml is { } value)
+            if (f.Section == section && !f.NotSaved && f.Toml is { } value)
                 sb.AppendLine(f.Key + " = " + value);
         }
     }

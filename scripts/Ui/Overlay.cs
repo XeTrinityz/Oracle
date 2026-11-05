@@ -85,7 +85,7 @@ internal static class Overlay
         _radialAnim = _radialAnim < radialTarget ? Math.Min(radialTarget, _radialAnim + Dt * radialSpeed) : Math.Max(radialTarget, _radialAnim - Dt * radialSpeed);
 
         bool list = ShowRunningList && _menuAnim <= 0f && _radialAnim <= 0f && !paused && Catalog.Ready && Catalog.ActiveCount > 0;
-        bool hud = !paused && Fader.IsClear && _menuAnim <= 0f && Catalog.Ready && AnyHud();
+        bool hud = !paused && Fader.IsClear && Catalog.Ready && AnyHud();
         if (canvas == null || (_menuAnim <= 0f && _radialAnim <= 0f && _toastLeft <= 0f && !list && !hud && Fader.Level <= 0f))
             return;
 
@@ -118,11 +118,14 @@ internal static class Overlay
         }
     }
 
+    /// <summary>Most HUDs give way to the menu as it opens; a few are what the menu is working on, so they stay.</summary>
+    private static bool Shows(Module m) => m.HasHud && (_menuAnim <= 0f || m.HudWithMenu);
+
     private static bool AnyHud()
     {
         foreach (Module m in App.Modules)
         {
-            if (m.HasHud)
+            if (Shows(m))
                 return true;
         }
 
@@ -133,7 +136,7 @@ internal static class Overlay
     {
         foreach (Module m in App.Modules)
         {
-            if (!m.HasHud)
+            if (!Shows(m))
                 continue;
 
             Alpha = 1f;
@@ -143,7 +146,7 @@ internal static class Overlay
             }
             catch (Exception ex)
             {
-                Log.Throttled("hud " + m.Name, m.Name + " HUD failed: " + ex.Message);
+                Log.Throttled("hud " + m.Name, m.Name + " HUD failed: " + Log.Why(ex));
             }
         }
     }

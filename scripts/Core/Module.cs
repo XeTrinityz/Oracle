@@ -14,6 +14,9 @@ internal abstract class Module
     /// <summary>True while <see cref="Draw"/> has something to show.</summary>
     public virtual bool HasHud => false;
 
+    /// <summary>Keeps <see cref="Draw"/> running under the open menu, for HUDs the menu works on (the world editor).</summary>
+    public virtual bool HudWithMenu => false;
+
     /// <summary>Registers this module's features. Runs once per load, before settings are read.</summary>
     public virtual void Build() { }
 

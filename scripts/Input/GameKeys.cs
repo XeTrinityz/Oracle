@@ -35,9 +35,20 @@ internal static unsafe class GameKeys
         "MouseX", "MouseY", "LeftMouseButton", "RightMouseButton", "MiddleMouseButton", "ThumbMouseButton", "ThumbMouseButton2", "MouseScrollUp", "MouseScrollDown",
     };
 
+    /// <summary>
+    /// What editor mode mutes on top of the menu's keys: the mouse buttons and modifier keys it uses, but not the
+    /// mouse axes, so the mouse still turns the camera while clicks select and grab.
+    /// </summary>
+    private static readonly string[] EditorNames =
+    {
+        "LeftMouseButton", "RightMouseButton", "MiddleMouseButton", "ThumbMouseButton", "ThumbMouseButton2", "MouseScrollUp", "MouseScrollDown",
+        "LeftShift", "RightShift", "LeftControl", "RightControl", "LeftAlt", "RightAlt",
+    };
+
     private static readonly List<(int Slot, int Index, int Number)> _muted = new();
     private static HashSet<int>? _keys;
     private static HashSet<int>? _pointerKeys;
+    private static HashSet<int>? _editorKeys;
     private static int _mark = -1;
     private static int _stride;
     private static nint _input;
@@ -48,11 +59,17 @@ internal static unsafe class GameKeys
 
     private static HashSet<int> PointerKeys => _pointerKeys ??= KeyNames.Concat(PointerNames).Select(n => new FName(n).Index).ToHashSet();
 
+    private static HashSet<int> EditorKeys => _editorKeys ??= KeyNames.Concat(EditorNames).Select(n => new FName(n).Index).ToHashSet();
+
+    /// <summary>True while some game keys are renamed away. Whoever muted last owns them; the menu closing unmutes all.</summary>
+    public static bool IsMuted => _muted.Count > 0;
+
     /// <summary>
-    /// Mutes the menu's keys, with <paramref name="pointer"/> the mouse as well, and with <paramref name="escape"/>
+    /// Mutes the menu's keys, with <paramref name="pointer"/> the mouse as well, with <paramref name="editor"/> the
+    /// mouse buttons and modifiers but not the mouse axes (editor mode), and with <paramref name="escape"/>
     /// ESCAPE too, for the radial, where ESC closes it rather than pausing the game.
     /// </summary>
-    public static void Mute(PlayerController pc, bool pointer = false, bool escape = false)
+    public static void Mute(PlayerController pc, bool pointer = false, bool escape = false, bool editor = false)
     {
         Unmute(pc);
         PlayerInput? input = pc.PlayerInput;
@@ -65,7 +82,7 @@ internal static unsafe class GameKeys
         if (_mark < 0)
             _mark = new FName("OracleMenuMuted").Index;
 
-        HashSet<int> keys = pointer ? PointerKeys : Keys;
+        HashSet<int> keys = pointer ? PointerKeys : editor ? EditorKeys : Keys;
         if (escape)
             keys = new HashSet<int>(keys) { new FName("Escape").Index };
         for (int i = 0; i < count; i++)

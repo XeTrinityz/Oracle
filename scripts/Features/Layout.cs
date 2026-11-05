@@ -144,6 +144,25 @@ internal static class Layout
         {
             new("RAIN", "rain", "rain_wetness", "rain_area"),
         }),
+        ("WORLD/EDITOR", new Section[]
+        {
+            new("EDITOR MODE", "ed_mode", "ed_fly_speed", "ed_mode_stay"),
+            new("SELECT", "ed_pick_aimed", "ed_target", "ed_pick_from", "ed_clear"),
+            new("GO", "ed_goto", "ed_bring"),
+            new("GRAB", "ed_grab", "ed_grab_distance"),
+            new("PLACE", "ed_crosshair", "ed_ground"),
+            new("NUDGE", "ed_nudge_forward", "ed_nudge_side", "ed_nudge_up", "ed_nudge_step"),
+            new("TURN AND SIZE", "ed_yaw", "ed_pitch", "ed_roll", "ed_scale"),
+            new("STATE", "ed_freeze", "ed_remove", "ed_ghost"),
+            new("ACTIONS", "ed_launch", "ed_flip", "ed_heal", "ed_destroy"),
+            new("CHARACTERS", "ed_disarm", "ed_revive", "ed_turn"),
+            new("UNDO", "ed_restore", "ed_restore_all"),
+        }),
+        ("WORLD/ESP", new Section[]
+        {
+            new("SHOW", "esp_enemies", "esp_friendlies", "esp_vehicles", "esp_turrets", "esp_props", "esp_movers", "esp_pickups"),
+            new("STYLE", "esp_boxes", "esp_tracers", "esp_details", "esp_range", "esp_max"),
+        }),
         ("CAMERA/GENERAL", new Section[]
         {
             new("PRESETS", "fov_preset", "cam_reset"),

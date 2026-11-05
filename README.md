@@ -58,6 +58,11 @@ drop, and teleports to the Batmobile, enemies and trophies.
 them on each other, arm them with weapons, hack militia tanks to your side, clear street thugs, flip every car, and an
 on-screen NPC count.
 
+**World editor.** Mark enemies, friendlies, vehicles, turrets, props, movable scenery and pickups through walls,
+with boxes, names, health and tracers. Select what you're aiming at, or pick from a list of everything nearby, then
+grab it and carry it around (and throw it), place it at your crosshair, nudge, turn and resize it, freeze it, switch
+off its collision, or remove it. REMOVE only hides, so missions can't break, and RESTORE puts anything you changed back.
+
 **Batmobile, five tabs.** Autopilot to a waypoint or objective along the roads, remote control without the gadget,
 repair, EMP-proofing and self-righting, engine power and tyre grip, a jump with floaty air gravity, auto combat that
 fights for you while you drive, shooting down incoming missiles, every weapon armed, no reload or overheat, a

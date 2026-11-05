@@ -11,7 +11,7 @@ internal static class App
     /// <summary>Update order, and through registration the order of rows within each menu page.</summary>
     public static readonly Module[] Modules =
     {
-        Player.I, GlideMod.I, Movement.I, Combat.I, Gadgets.I, Npcs.I, Screen.I, Atmosphere.I, Cosmetics.I, Rain.I, JammedGuns.I, CameraRig.I, Batmobile.I,
+        Player.I, GlideMod.I, Movement.I, Combat.I, Gadgets.I, Npcs.I, WorldEditor.I, Screen.I, Atmosphere.I, Cosmetics.I, Rain.I, JammedGuns.I, CameraRig.I, Batmobile.I,
         BatmobileSkin.I, CharacterSuit.I, Teleport.I, TeleportTools.I, TimeControl.I, Characters.I, Music.I, NewGamePlus.I, Progress.I, Riddler.I, SystemPage.I, AssetBrowser.I,
     };
 
@@ -59,6 +59,7 @@ internal static class App
     {
         Radial.Close();
         Menu.Close();
+        Safe.Run("editor mode", () => WorldEditor.I.LeaveMode(true));
         World.Forget();
         if (!Characters.I.Busy)
             Fader.Clear();
@@ -70,6 +71,7 @@ internal static class App
     {
         Radial.Close();
         Menu.Close();
+        Safe.Run("editor mode", () => WorldEditor.I.LeaveMode(true));
         World.Forget();
     }
 
@@ -131,7 +133,7 @@ internal static class App
             }
             catch (Exception ex)
             {
-                Log.Throttled("frame " + m.Name, m.Name + " frame failed: " + ex.Message);
+                Log.Throttled("frame " + m.Name, m.Name + " frame failed: " + Log.Why(ex));
             }
         }
 
@@ -151,7 +153,7 @@ internal static class App
             }
             catch (Exception ex)
             {
-                Log.Throttled("tick " + m.Name, m.Name + " tick failed: " + ex.Message);
+                Log.Throttled("tick " + m.Name, m.Name + " tick failed: " + Log.Why(ex));
             }
         }
     }
@@ -166,7 +168,7 @@ internal static class App
             }
             catch (Exception ex)
             {
-                Log.Info(m.Name + " " + what + " failed: " + ex.Message);
+                Log.Info(m.Name + " " + what + " failed: " + Log.Why(ex));
             }
         }
     }

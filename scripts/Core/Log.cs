@@ -50,6 +50,40 @@ internal static class Log
             Info(text);
     }
 
+    /// <summary>
+    /// An exception's message and where in Oracle it was thrown: the innermost Oracle frame of its stack, with the
+    /// line when the build has one. A message alone ("Object reference not set...") says nothing about where.
+    /// </summary>
+    public static string Why(Exception ex)
+    {
+        try
+        {
+            return Where(ex);
+        }
+        catch (Exception)
+        {
+            // Reading the stack can fail on frames that pass through native code. The message still helps.
+            return ex.Message + " (" + ex.GetType().Name + ")";
+        }
+    }
+
+    private static string Where(Exception ex)
+    {
+        var trace = new System.Diagnostics.StackTrace(ex, true);
+        foreach (System.Diagnostics.StackFrame frame in trace.GetFrames())
+        {
+            System.Reflection.MethodBase? m = frame.GetMethod();
+            if (m?.DeclaringType?.Namespace?.StartsWith("CeZeY", StringComparison.Ordinal) != true)
+                continue;
+
+            string type = m.DeclaringType!.Name;
+            int line = frame.GetFileLineNumber();
+            return ex.Message + " (" + ex.GetType().Name + " in " + type + "." + m.Name + (line > 0 ? " line " + line : "") + ")";
+        }
+
+        return ex.Message + " (" + ex.GetType().Name + ")";
+    }
+
     /// <summary>Logs at most once every few seconds per key, so one failing tick can't flood the log or hide another error.</summary>
     public static void Throttled(string key, string text)
     {

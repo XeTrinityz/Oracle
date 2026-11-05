@@ -404,7 +404,7 @@ internal static class Catalog
         }
         catch (Exception ex)
         {
-            Log.Throttled(f.Id + what, f.Label + " " + what + " failed: " + ex.Message);
+            Log.Throttled(f.Id + what, f.Label + " " + what + " failed: " + Log.Why(ex));
         }
     }
 }

@@ -25,6 +25,9 @@ internal abstract class Feature
 
     public bool NeedsConfirm;
 
+    /// <summary>Never written to or read from settings.toml: a row that describes something live, like the editor's selection.</summary>
+    public bool NotSaved;
+
     /// <summary>Replaces the generic confirmation question.</summary>
     public Func<string>? ConfirmPrompt;
 
@@ -245,6 +248,12 @@ internal static class FeatureSetup
     public static T EveryTick<T>(this T f, Action step) where T : Feature
     {
         f.TickStep = step;
+        return f;
+    }
+
+    public static T Unsaved<T>(this T f) where T : Feature
+    {
+        f.NotSaved = true;
         return f;
     }
 
