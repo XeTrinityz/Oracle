@@ -268,13 +268,24 @@ internal static class Things
 
         if (!any)
         {
-            PrimitiveComponent? main = a switch
+            // Some RVehicleCars throw from the Mesh getter itself (2026-11-05, every few seconds in the log), so a
+            // part that can't be read leaves the default box instead of skipping the whole thing.
+            PrimitiveComponent? main;
+            try
             {
-                Vehicle v when v.Mesh is { IsValid: true } m => m,
-                SkeletalMeshActor k when k.SkeletalMeshComponent is { IsValid: true } sk => sk,
-                DynamicSMActor d when d.StaticMeshComponent is { IsValid: true } s => s,
-                _ => a.CollisionComponent,
-            };
+                main = a switch
+                {
+                    Vehicle v when v.Mesh is { IsValid: true } m => m,
+                    SkeletalMeshActor k when k.SkeletalMeshComponent is { IsValid: true } sk => sk,
+                    DynamicSMActor d when d.StaticMeshComponent is { IsValid: true } s => s,
+                    _ => a.CollisionComponent,
+                };
+            }
+            catch (Exception)
+            {
+                main = null;
+            }
+
             if (main is { IsValid: true })
                 any = Add(main, ref min, ref max);
         }

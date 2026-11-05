@@ -37,6 +37,8 @@ internal sealed class AssetBrowser : Module
     private bool _fontsListed;
     private Texture2D? _shown;
     private string _shownPath = "";
+    private double _shownSince;
+    private const double SettleSeconds = 0.35;
 
     public override void Build()
     {
@@ -129,12 +131,27 @@ internal sealed class AssetBrowser : Module
     /// <summary>True while the ASSETS tab is open with PREVIEW on and a texture picked.</summary>
     public bool Previewing => _preview.On && Menu.IsOpen && Menu.InRows && !Menu.Searching && Menu.Current.Title == TabTitle && _texture.CurrentKey.Length > 0;
 
+    /// <summary>
+    /// Only a texture whose GPU side is settled goes to the render thread: a resource exists, a mip is loaded, it
+    /// isn't being released, no streaming change is in flight, and the pick has stayed put for a moment. Drawing
+    /// whatever was picked, frame by frame while scrolling, crashed the render thread on 2026-11-05 ("Rendering
+    /// thread exception", scrolling through Scarecrow textures that stream in and out with their cutscene).
+    /// </summary>
+    private bool Drawable(Texture2D t) =>
+        Clock.Now - _shownSince >= SettleSeconds
+        && t.Resource != 0
+        && t.ResidentMips > 0
+        && !t.bAsyncResourceReleaseHasBeenStarted
+        && t.PendingMipChangeRequestStatus.Value == 0;
+
     /// <summary>Draws the selected texture's details and image inside a panel the menu has already drawn.</summary>
     public void DrawPreview(float x, float y, float maxW, float maxH, Rgba accent)
     {
         string path = _texture.CurrentKey;
         if (path != _shownPath || _shown is not { IsValid: true })
         {
+            if (path != _shownPath)
+                _shownSince = Clock.Now;
             _shownPath = path;
             try
             {
@@ -178,6 +195,13 @@ internal sealed class AssetBrowser : Module
         if (_shown is not { IsValid: true } shown)
         {
             Gfx.Text(x + pad, textY + Gfx.S(6), "NOT LOADED ANY MORE, REFRESH", Theme.Warn, 0.6f);
+            return;
+        }
+
+        if (!Drawable(shown))
+        {
+            // The game's own spinning bat, the one on Oracle's fade screens, while the texture settles.
+            Overlay.DrawSpinner(x + pad + boxW * 0.5f, textY + boxH * 0.5f, 1f, 56f);
             return;
         }
 

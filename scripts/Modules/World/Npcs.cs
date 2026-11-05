@@ -193,7 +193,7 @@ internal sealed class Npcs : Module
         AddCommand("npc_kill_sentries", "DESTROY SENTRY GUNS", "Blows up every militia sentry gun in the loaded part of the city, the same way a destroyed one goes, and they stay destroyed. Watchtower and airship turrets aren't touched: use DISABLE ALL TURRETS on those.", DestroySentries);
         AddCommand("npc_disable_turrets", "DISABLE ALL TURRETS", "Switches off every sentry gun and turret in the loaded part of the city, watchtowers and airship guns included. Sentry guns shut down, turrets go dead the way they do after a disruptor hit. They stay off.", DisableTurrets);
         AddCommand("npc_flip_cars", "FLIP ALL CARS", "Turns every car upside down, not just the militia's: police cars and the Batmobile flip too.", () => World.RequireCheats().FlipThugCars());
-        AddCommand("npc_clear_thugs", "CLEAR STREET THUGS", "Sends the thugs roaming the streets away. Mission and story enemies stay.", () => World.RequireCheats().PoolAllPawns());
+        AddCommand("npc_clear_thugs", "CLEAR STREET THUGS", "Sends the thugs roaming the streets away. Mission and story enemies stay.", ClearStreetThugs);
 
         // ---- info
         _counter = AddToggle("npc_count", "SHOW NPC COUNT", "Shows how many enemies are standing or down, and how many friendlies, within 90 m.").Pref();
@@ -793,6 +793,37 @@ internal sealed class Npcs : Module
     /// Hidden guns are packed in a thug's sentry bag and not deployed yet. Watchtower turrets are left alone: their
     /// destroyed state is handled natively and may count toward Occupy Gotham.
     /// </summary>
+    /// <summary>
+    /// The game's PoolAllPawns cheat loops until the thug pool is empty, so a thug whose return is deferred (one
+    /// mid-speech waits for the line to end) spins it forever. This returns each pooled thug once.
+    /// </summary>
+    private static void ClearStreetThugs()
+    {
+        RPopulationManager pm = World.Info?.PopulationManager is { IsValid: true } found ? found : throw new InvalidOperationException("there's no city population here");
+        RPawnPool pool = pm.ThugPool;
+        if (pool is not { IsValid: true })
+            throw new InvalidOperationException("there's no city population here");
+
+        var thugs = new List<RBMPawnAI>();
+        var active = pool.ActivePawns;
+        for (int i = 0; i < active.Count; i++)
+        {
+            if (active[i] is { IsValid: true, bDeleteMe: false } thug)
+                thugs.Add(thug);
+        }
+
+        if (thugs.Count == 0)
+            throw new InvalidOperationException("no street thugs around");
+
+        foreach (RBMPawnAI thug in thugs)
+        {
+            if (thug.IsValid && !thug.bDeleteMe)
+                thug.DestroyOrReturnToPool(false, false);
+        }
+
+        Overlay.Notice(NoticeTitle, Fmt.Plural(thugs.Count, "THUG") + " SENT AWAY", true);
+    }
+
     private static void DestroySentries()
     {
         int count = 0;

@@ -3,6 +3,7 @@ using BmSDK.AkAudio;
 using BmSDK.BmGame;
 using BmSDK.Engine;
 using static CeZeY.Oracle.Catalog;
+using FLinearColor = BmSDK.GameObject.FLinearColor;
 
 namespace CeZeY.Oracle;
 
@@ -24,24 +25,90 @@ internal sealed class Rain : Module
         new("storm", "STORM", 3.2f, 1.4f, 1.6f, true),
     };
 
-    private readonly record struct State(float Density, float Width, float Box, AkEvent? Bed, float Wet, float Damp, float Dark, float Wake);
+    /// <summary>Every value Oracle writes on one rain volume, compared whole to tell its own writes from the game's.</summary>
+    private readonly record struct Values(float Density, float Width, float Box, float Wet, float Damp, float Dark, float Wake,
+        float Gas, FLinearColor Sludge, float Spatter, bool FarRain, bool FarHidden, float Puddle, float DampTh);
+
+    private readonly record struct State(Values V, AkEvent? Bed);
+
+    private static Values Read(RainVolume v, RRainComponent rc, RainMapComponent map)
+    {
+        ref RRainComponent.FRockRainSettings s = ref rc.RainSettings;
+        bool hasMap = map is { IsValid: true };
+        StaticMeshComponent far = v.FarRainMesh;
+        return new Values(s.Density, s.Width, rc.BoxSize,
+            hasMap ? map.WetnessGlobalScale : 1f, hasMap ? map.MinimumDampAmount : 0f, hasMap ? map.Darkening : 0f, hasMap ? map.RainWakeAmount : 0f,
+            s.FearGasAmount, s.FearGasSludgeColor, v.RainCameraSpatter, v.bDrawFarRainMesh, far is { IsValid: true } && far.HiddenGame, hasMap ? map.PuddleThreshold : 0f,
+            hasMap ? map.DampThreshold : 0f);
+    }
+
+    private static void Write(RainVolume v, RRainComponent rc, RainMapComponent map, Values n)
+    {
+        ref RRainComponent.FRockRainSettings s = ref rc.RainSettings;
+        s.Density = n.Density;
+        s.Width = n.Width;
+        rc.BoxSize = n.Box;
+        s.FearGasAmount = n.Gas;
+        s.FearGasSludgeColor = n.Sludge;
+        v.RainCameraSpatter = n.Spatter;
+        v.bDrawFarRainMesh = n.FarRain;
+        if (v.FarRainMesh is { IsValid: true } far && far.HiddenGame != n.FarHidden)
+            far.SetHidden(n.FarHidden);
+        if (map is { IsValid: true })
+        {
+            map.WetnessGlobalScale = n.Wet;
+            map.MinimumDampAmount = n.Damp;
+            map.Darkening = n.Dark;
+            map.RainWakeAmount = n.Wake;
+            map.PuddleThreshold = n.Puddle;
+            map.DampThreshold = n.DampTh;
+            // The rain map's values reach the renderer when the component is rebuilt.
+            map.QueueReattach(false);
+        }
+    }
+
+    private static FLinearColor Tint(Toxin t, FLinearColor game) => new() { R = t.R, G = t.G, B = t.B, A = game.A <= 0f ? 1f : game.A };
+
+    private sealed record Toxin(string Key, string Label, float R, float G, float B);
+
+    private static readonly Toxin[] Toxins =
+    {
+        new("game", "GAME", 0f, 0f, 0f),
+        new("green", "FEAR GREEN", 0.25f, 1f, 0.1f),
+        new("yellow", "SICKLY YELLOW", 1f, 0.85f, 0.1f),
+        new("orange", "ORANGE", 1f, 0.42f, 0.05f),
+        new("red", "BLOOD RED", 1f, 0.05f, 0.03f),
+        new("purple", "JOKER PURPLE", 0.6f, 0.12f, 1f),
+        new("blue", "COLD BLUE", 0.15f, 0.5f, 1f),
+    };
 
     private static readonly PropertyInfo[] SurfaceSounds = typeof(PhysicalMaterial).GetProperties()
         .Where(p => p.Name.StartsWith("SurfaceRainSound", StringComparison.Ordinal) && p.PropertyType == typeof(AkEvent) && p.CanWrite)
         .ToArray();
 
     private readonly Dictionary<string, State> _originals = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Values> _written = new(StringComparer.Ordinal);
     private readonly HashSet<string> _muted = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AkEvent?[]> _surfaces = new(StringComparer.Ordinal);
     private readonly HashSet<string> _emitters = new(StringComparer.Ordinal);
     private AkParameterName? _param;
     private bool _paramSet;
     private float _resyncLeft = -1f;
+    private readonly HashSet<string> _mistOff = new(StringComparer.Ordinal);
     private int _look;
     private float _wet = 1f;
     private float _box = 1f;
+    private float _toxin;
+    private int _toxinColour;
+    private float _puddles = 1f;
+    private bool _noMist;
+    private bool _noFarRain;
+    private bool _reported;
     private Every _refresh;
     private bool _dirty;
+
+    private bool Vanilla => _look == 0 && MathF.Abs(_wet - 1f) < 0.001f && MathF.Abs(_box - 1f) < 0.001f && _toxin <= 0f && _toxinColour == 0
+        && MathF.Abs(_puddles - 1f) < 0.001f && !_noMist && !_noFarRain;
 
     private bool Changed => _originals.Count > 0 || _surfaces.Count > 0 || _emitters.Count > 0 || _paramSet;
 
@@ -51,6 +118,44 @@ internal sealed class Rain : Module
             Looks.Select(l => l.Key).ToArray(), Looks.Select(l => l.Label).ToArray(), i => { _look = Math.Clamp(i, 0, Looks.Length - 1); _dirty = true; });
         AddSlider("rain_wetness", "WET STREETS", "How wet and shiny the streets, rooftops and suits look. 0% = completely dry.", 1f, 0f, 2f, 0.1f, 1.6f, Fmt.Percent, v => { _wet = v; _dirty = true; });
         AddSlider("rain_area", "RAIN AREA", "Size of the rain box around you. Smaller packs the drops close around the camera, bigger spreads them further out and thinner.", 1f, 0.25f, 3f, 0.25f, 2f, Fmt.Percent, v => { _box = v; _dirty = true; });
+
+        AddSlider("rain_toxin", "TOXIN RAIN", "Mixes Scarecrow's fear toxin into the rain, the sludgy coloured rain from under the toxin cloud. Only shows while the toxin cloud hangs over the city. 0% = clean rain.", 0f, 0f, 1f, 0.1f, 0.8f, Fmt.Percent,
+            v => { _toxin = v; _dirty = true; WarnNoCloud(v); });
+        Choice colour = AddChoice("rain_toxin_colour", "TOXIN COLOUR", "Colour of the toxin in the rain. GAME keeps the game's own.",
+            Toxins.Select(t => t.Key).ToArray(), Toxins.Select(t => t.Label).ToArray(), i => { _toxinColour = Math.Clamp(i, 0, Toxins.Length - 1); _dirty = true; });
+        colour.Swatch = i => i <= 0 ? Rgba.From(0.35f, 0.8f, 0.25f) : Rgba.From(Toxins[i].R, Toxins[i].G, Toxins[i].B);
+
+        AddSlider("rain_puddles", "PUDDLES", "How readily puddles form on wet ground. 0% = none at all.", 1f, 0f, 2f, 0.1f, 1.8f, Fmt.Percent, v => { _puddles = v; _dirty = true; });
+        AddToggle("rain_no_mist", "NO RAIN MIST", "Removes the spray of mist that hangs around you in the rain.", on => { _noMist = on; _dirty = true; });
+        AddToggle("rain_no_far", "NO DISTANT RAIN", "Removes the sheets of rain drawn far off across the city, so the skyline stays sharp.", on => { _noFarRain = on; _dirty = true; });
+    }
+
+    /// <summary>
+    /// The puddle and damp thresholds as wetness levels: the game's are 1 (2026-11-05 log), the top. The first
+    /// version could only go drier from there, so below 100% did nothing; now 0% raises it past the top and 200%
+    /// drops it to nothing.
+    /// </summary>
+    private static float Puddle(float o, float v)
+    {
+        float top = Math.Max(o, 1f);
+        return v <= 1f ? o + (top * 2f - o) * (1f - v) : o * (2f - v);
+    }
+
+    /// <summary>
+    /// Uses the script function IsGasActive (the story's toxin side chapter, or the GasActiveInOverworld flag), an
+    /// ordinary call on the game info. Never the static natives IsFearGasActive/IsLocationInFearGas/
+    /// GetFearGasHeightAtLocation: BmSDK calls a static native with no object behind it, and IsFearGasActive
+    /// crashed the game in coreclr twice on 2026-11-05, which no try/catch can stop.
+    /// </summary>
+    private static void WarnNoCloud(float v)
+    {
+        if (v <= 0f || World.Info is not { } gi)
+            return;
+
+        bool cloud = Safe.Try("gas check", () => gi.IsGasActive());
+        Log.Detail("Toxin rain: fear gas " + (cloud ? "active" : "not active") + ".");
+        if (!cloud)
+            Overlay.Notice("TOXIN RAIN", "NEEDS SCARECROW'S TOXIN CLOUD", false);
     }
 
     public override void WorldChanged() => Forget();
@@ -75,11 +180,14 @@ internal sealed class Rain : Module
         });
 
         _originals.Clear();
+        _written.Clear();
         _muted.Clear();
+        _mistOff.Clear();
         _surfaces.Clear();
         _emitters.Clear();
         _param = null;
         _paramSet = false;
+        _reported = false;
         _dirty = true;
     }
 
@@ -92,8 +200,7 @@ internal sealed class Rain : Module
                 ResyncParam();
         }
 
-        bool vanilla = _look == 0 && MathF.Abs(_wet - 1f) < 0.001f && MathF.Abs(_box - 1f) < 0.001f;
-        if (vanilla)
+        if (Vanilla)
         {
             if (Changed)
                 Restore();
@@ -115,27 +222,50 @@ internal sealed class Rain : Module
             if (rc is not { IsValid: true })
                 continue;
 
-            bool hasMap = map is { IsValid: true };
             string key = v.GetPathName(null);
             ref RRainComponent.FRockRainSettings s = ref rc.RainSettings;
-            if (!_originals.TryGetValue(key, out State o))
+            Values live = Read(v, rc, map);
+
+            // Anything Oracle didn't write is the game's own change (a story weather beat), so follow it.
+            bool known = _originals.TryGetValue(key, out State o);
+            if (!known || !_written.TryGetValue(key, out Values w) || live != w)
             {
-                o = hasMap
-                    ? new State(s.Density, s.Width, rc.BoxSize, s.RainSoundBed, map.WetnessGlobalScale, map.MinimumDampAmount, map.Darkening, map.RainWakeAmount)
-                    : new State(s.Density, s.Width, rc.BoxSize, s.RainSoundBed, 1f, 0f, 0f, 0f);
+                AkEvent? bed = s.RainSoundBed is { IsValid: true } b ? b : known ? o.Bed : null;
+                if (known)
+                    Log.Detail("Rain: the game changed " + key + ", following it.");
+                o = new State(live, bed);
                 _originals[key] = o;
+                if (!_reported)
+                {
+                    _reported = true;
+                    Log.Info("Rain: game values density " + live.Density + ", toxin " + live.Gas + ", sludge " + live.Sludge.R + "/" + live.Sludge.G + "/" + live.Sludge.B
+                        + ", spatter " + live.Spatter + ", puddle threshold " + live.Puddle + ", wake " + live.Wake + ".");
+                }
             }
 
-            s.Density = o.Density * look.Density;
-            s.Width = o.Width * look.Width;
-            rc.BoxSize = o.Box * _box;
-            if (hasMap)
+            Values g = o.V;
+            Values want = g with
             {
-                map.WetnessGlobalScale = o.Wet * wet;
-                map.MinimumDampAmount = o.Damp * damp;
-                map.Darkening = o.Dark * damp;
-                map.RainWakeAmount = o.Wake * Math.Min(look.Density, 1f);
-            }
+                Density = g.Density * look.Density,
+                Width = g.Width * look.Width,
+                Box = g.Box * _box,
+                Wet = g.Wet * wet,
+                Damp = g.Damp * damp,
+                Dark = g.Dark * damp,
+                Wake = g.Wake * Math.Min(look.Density, 1f),
+                Puddle = Puddle(g.Puddle, _puddles),
+                DampTh = Puddle(g.DampTh, _puddles),
+                Gas = Math.Max(g.Gas, _toxin),
+                Sludge = _toxinColour > 0 ? Tint(Toxins[_toxinColour], g.Sludge) : g.Sludge,
+                FarRain = g.FarRain && !_noFarRain,
+                FarHidden = g.FarHidden || _noFarRain,
+            };
+
+            bool changed = want != live;
+            if (changed)
+                Write(v, rc, map, want);
+
+            SetMist(v, key, _noMist);
 
             bool muted = _muted.Contains(key);
             if (!look.Sound && !muted)
@@ -143,15 +273,21 @@ internal sealed class Rain : Module
                 rc.DisableRainSound();
                 s.RainSoundBed = null!;
                 _muted.Add(key);
+                changed = true;
             }
             else if (look.Sound && muted)
             {
                 s.RainSoundBed = o.Bed!;
                 rc.EnableRainSound();
                 _muted.Remove(key);
+                changed = true;
             }
 
-            v.SetRainSettings();
+            if (changed)
+                v.SetRainSettings();
+
+            // Read back rather than trusting what was written, in case the native side clamps a value.
+            _written[key] = Read(v, rc, map);
         }
 
         if (look.Sound)
@@ -290,18 +426,12 @@ internal sealed class Rain : Module
             if (!_originals.TryGetValue(key, out State o) || rc is not { IsValid: true })
                 continue;
 
+            // Only put back what is still Oracle's: if the game has changed the volume since, its values stand.
             ref RRainComponent.FRockRainSettings s = ref rc.RainSettings;
-            s.Density = o.Density;
-            s.Width = o.Width;
-            rc.BoxSize = o.Box;
             RainMapComponent map = v.RainMap;
-            if (map is { IsValid: true })
-            {
-                map.WetnessGlobalScale = o.Wet;
-                map.MinimumDampAmount = o.Damp;
-                map.Darkening = o.Dark;
-                map.RainWakeAmount = o.Wake;
-            }
+            if (!_written.TryGetValue(key, out Values w) || Read(v, rc, map) == w)
+                Write(v, rc, map, o.V);
+            SetMist(v, key, false);
 
             if (_muted.Remove(key))
             {
@@ -314,6 +444,31 @@ internal sealed class Rain : Module
 
         RestoreAudio();
         _originals.Clear();
+        _written.Clear();
         _muted.Clear();
+        _mistOff.Clear();
+    }
+
+    /// <summary>Stops or restarts the mist that follows the camera, remembering which ones Oracle stopped.</summary>
+    private void SetMist(RainVolume v, string key, bool off)
+    {
+        ParticleSystemComponent mist = v.NearMist;
+        if (mist is not { IsValid: true })
+            return;
+
+        if (off && !_mistOff.Contains(key))
+        {
+            if (!mist.bIsActive)
+                return;
+
+            mist.DeactivateSystem();
+            mist.SetHidden(true);
+            _mistOff.Add(key);
+        }
+        else if (!off && _mistOff.Remove(key))
+        {
+            mist.SetHidden(false);
+            mist.ActivateSystem(false, false);
+        }
     }
 }

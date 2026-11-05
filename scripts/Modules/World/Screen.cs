@@ -10,7 +10,7 @@ internal sealed class Screen : Module
 
     private const double RefreshSeconds = 2.0;
 
-    private readonly record struct EffectState(bool UseWorld, bool Show, bool LightingOnly);
+    private readonly record struct EffectState(bool UseWorld, bool LightingOnly);
 
     private readonly Dictionary<string, EffectState> _effects = new(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _volumes = new(StringComparer.Ordinal);
@@ -18,6 +18,9 @@ internal sealed class Screen : Module
     private int _mode;
     private bool _withAtmo;
     private Every _refresh;
+
+    /// <summary>A sky look or a PostFx row needs the world's settings, so REDUCED and OFF keep them with the grading neutralised.</summary>
+    private static bool WorldLook => Atmosphere.I.Wanted || PostFx.I.Wanted;
 
     public override void Build()
     {
@@ -42,7 +45,7 @@ internal sealed class Screen : Module
 
     public override void Tick(float dt)
     {
-        if (_choice.Index != 0 && _withAtmo != Atmosphere.I.Wanted)
+        if (_choice.Index != 0 && _withAtmo != WorldLook)
             Apply(_choice.Index);
 
         if (_mode != 0 && _refresh.Elapsed(RefreshSeconds))
@@ -52,7 +55,7 @@ internal sealed class Screen : Module
     private void Apply(int mode)
     {
         _mode = Math.Clamp(mode, 0, 2);
-        _withAtmo = _mode != 0 && Atmosphere.I.Wanted;
+        _withAtmo = _mode != 0 && WorldLook;
         Atmosphere.I.SetGradeOff(_withAtmo);
         Write();
     }
@@ -65,20 +68,24 @@ internal sealed class Screen : Module
             return;
         }
 
+        // Only the grading, bloom and lighting chain (RockOn, RockAtmos, Uber and the DOF/bloom effects). The
+        // material slots are the game's overlays (damage, stun, detective mode, menu blur) and the game shows and
+        // hides ambient occlusion itself for detective vision, so those are never touched, and nothing is forced visible.
         bool lightingOnly = _mode == 2;
         foreach (PostProcessEffect e in World.All<PostProcessEffect>())
         {
+            if (e is not DOFEffect)
+                continue;
+
             string key = e.GetPathName(null);
             if (!_effects.ContainsKey(key))
-                _effects[key] = new EffectState(e.bUseWorldSettings, e.bShowInGame, e.bAffectsLightingOnly);
+                _effects[key] = new EffectState(e.bUseWorldSettings, e.bAffectsLightingOnly);
 
             bool rock = e is RockAtmos || e is RockOn;
             bool useWorld = _withAtmo && (rock || e is UberPostProcessEffect);
             bool light = lightingOnly && !(_withAtmo && rock);
             if (e.bUseWorldSettings != useWorld)
                 e.bUseWorldSettings = useWorld;
-            if (!e.bShowInGame)
-                e.bShowInGame = true;
             if (e.bAffectsLightingOnly != light)
                 e.bAffectsLightingOnly = light;
         }
@@ -104,7 +111,6 @@ internal sealed class Screen : Module
                 continue;
 
             e.bUseWorldSettings = o.UseWorld;
-            e.bShowInGame = o.Show;
             e.bAffectsLightingOnly = o.LightingOnly;
         }
 

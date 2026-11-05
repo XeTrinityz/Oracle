@@ -58,6 +58,13 @@ drop, and teleports to the Batmobile, enemies and trophies.
 them on each other, arm them with weapons, hack militia tanks to your side, clear street thugs, flip every car, and an
 on-screen NPC count.
 
+**World: weather, atmosphere and city.** Rain from none to storm, toxin rain in any colour, puddles, mist and distant
+rain. Lightning strikes on demand or at your crosshair, storm frequency and brightness. Wind
+strength, direction and gusts. Sky and fog looks plus exposure, bloom, motion blur, film grain, depth of field, and
+where the fog starts and how high it hangs. In the city: EMPTY STREETS, spawn an APC, a thug mob on the Batmobile or a
+getaway car to chase, Jokerfy every billboard, Joker thugs, how often the Joker hallucinations come, and a
+readout of the militia left on your island.
+
 **World editor.** Mark enemies, friendlies, vehicles, turrets, props, movable scenery and pickups through walls,
 with boxes, names, health and tracers. Select what you're aiming at, or pick from a list of everything nearby, then
 grab it and carry it around (and throw it), place it at your crosshair, nudge, turn and resize it, freeze it, switch

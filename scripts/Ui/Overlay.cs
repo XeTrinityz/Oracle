@@ -181,14 +181,15 @@ internal static class Overlay
     private const string SpinnerTexture = "BmFonts.Loading_DVDIcon";
     private const float SpinnerFps = 14f;
 
-    private static void DrawSpinner(float cx, float cy, float level)
+    /// <summary>Draws the spinner centred on a point; <paramref name="size"/> is in unscaled pixels.</summary>
+    public static void DrawSpinner(float cx, float cy, float level, float size = 64f)
     {
         if (Find(SpinnerTexture) is not { } strip || strip.SizeY <= 0)
             return;
 
         int frames = Math.Max(1, strip.SizeX / strip.SizeY);
         int frame = (int)(Time * SpinnerFps) % frames;
-        float size = S(64);
+        size = S(size);
         Rgba tint = Rgba.Mix(Theme.Accent, Theme.White, 0.3f);
         Sprite(strip, cx - size * 0.5f, cy - size * 0.5f, size, size, frame * strip.SizeY, 0f, strip.SizeY, strip.SizeY, tint, level);
     }

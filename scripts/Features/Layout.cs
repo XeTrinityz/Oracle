@@ -129,20 +129,30 @@ internal static class Layout
         }),
         ("WORLD/CITY", new Section[]
         {
+            new("STREETS", "city_empty", "+npc_clear_thugs"),
             new("RIOTS", "force_riots", "rioters_fight"),
+            new("SPAWN", "city_apc", "city_batmobile_mob", "city_getaway_car"),
+            new("JOKER", "joker_city", "joker_thugs", "joker_sightings"),
             new("VEHICLES", "npc_flip_cars"),
             new("TIME", "game_speed"),
-            new("INFO", "npc_count"),
+            new("INFO", "city_threats", "npc_count"),
         }),
         ("WORLD/ATMOSPHERE", new Section[]
         {
             new("LOOK", "atmosphere", "atmo_hue", "atmo_strength", "atmo_desat"),
-            new("FOG", "atmo_fog"),
+            new("LIGHT", "fx_exposure", "fx_bloom"),
+            new("FOG", "atmo_fog", "fx_fog_distance", "fx_fog_height"),
+            new("LENS", "fx_motion_blur", "fx_grain", "fx_dof_focus", "fx_dof_blur"),
             new("SCREEN", "post_process"),
         }),
         ("WORLD/WEATHER", new Section[]
         {
             new("RAIN", "rain", "rain_wetness", "rain_area"),
+            new("TOXIN", "rain_toxin", "rain_toxin_colour"),
+            new("STREETS", "rain_puddles"),
+            new("EFFECTS", "rain_no_mist", "rain_no_far"),
+            new("LIGHTNING", "lightning_strike", "lightning_aim", "lightning_frequency", "lightning_brightness"),
+            new("WIND", "wind_strength", "wind_direction", "wind_gusts"),
         }),
         ("WORLD/EDITOR", new Section[]
         {
