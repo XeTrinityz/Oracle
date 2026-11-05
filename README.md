@@ -81,6 +81,11 @@ repair, EMP-proofing and self-righting, engine power and tyre grip, a jump with 
 fights for you while you drive, shooting down incoming missiles, every weapon armed, no reload or overheat, a
 speedometer with driving stats, and Showcase skins.
 
+**Player status.** CAN'T DIE (hits still hurt but leave you on 1 health), DAMAGE TAKEN from a tenth to five times,
+health regeneration, unbreakable armour, no hit reactions, no stuns, invisible to thugs as well as drones, and a
+status readout with health, armour, XP and upgrade points. PROGRESS adds an XP multiplier and +5000 XP, and
+CHARACTER sets Batman's suit battle damage.
+
 **Player.** Movement sliders for glide speed, grapple speed and boost power, line launcher speed, fall gravity and
 low tunnel speed. Gadget cheats (no cooldown, use anywhere, unlimited disruptor, auto password hacks), Showcase suits applied on the spot,
 upgrade points and unlocks, SAVE GAME NOW, and a Riddler page: reveal every trophy on the map, or SKIP TO RIDDLER

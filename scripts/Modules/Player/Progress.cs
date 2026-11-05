@@ -12,6 +12,8 @@ internal sealed class Progress : Module
     public override void Build()
     {
         AddSaveCommand("upgrade_points", "+10 UPGRADE POINTS", "Adds 10 points to spend on upgrades.", () => GivePoints(10));
+        AddSaveCommand("give_xp", "+5000 XP", "Adds 5000 experience, as a fight would. Enough of it levels you up and earns upgrade points.", () => GiveXp(5000));
+        _xpScale = AddSlider("xp_multiplier", "XP MULTIPLIER", "Multiplies the experience you earn from fights, predator rooms, Batmobile battles and everything else.", 1f, 1f, 10f, 0.5f, 2f, Fmt.Times);
         AddSaveCommand("unlock_upgrades", "UNLOCK ALL UPGRADES", "Unlocks every upgrade for Batman and the Batmobile.", () => World.RequireCheats().UnlockAllUpgrades(true));
         AddSaveCommand("riddler_map", "REVEAL RIDDLER MAP", "Reveals every Riddler trophy and puzzle on the map.", RevealRiddlerMap);
         AddSaveCommand("unlock_all", "UNLOCK EVERYTHING", "The game's own unlock-all cheat: upgrades, gadgets, extras and more.", () => World.RequireCheats().UnlockAll());
@@ -51,6 +53,44 @@ internal sealed class Progress : Module
         RCheatManager cheats = World.RequireCheats();
         cheats.RiddlerRevealItems(new FString(""));
         cheats.GiveRiddlerMap();
+    }
+
+    // ---- experience
+    // Every XP award goes through RExperienceSystem.AddUnbankedXP (fights, predator and Batmobile bonuses, XP
+    // sequences, the AddXP cheat); BankXP later adds the unbanked total to RPersistentShared.Xp and levels you up.
+    // XP also heals in combat (RPawnPlayer.ExperienceAwarded), so the multiplier heals more too.
+
+    // The redirect can run before Build, so the slider may still be null.
+    private Slider? _xpScale;
+    private bool _granting;
+
+    private int ScaleXp(int xp)
+    {
+        float scale = _xpScale?.Value ?? 1f;
+        return _granting || xp <= 0 || scale <= 1.001f ? xp : (int)MathF.Round(xp * scale);
+    }
+
+    [Redirect(typeof(RExperienceSystem), nameof(RExperienceSystem.AddUnbankedXP))]
+    private static void AddUnbankedXPRedirect(RExperienceSystem self, int xpAwarded, bool teeth)
+    {
+        int xp = xpAwarded;
+        Safe.Run("xp multiplier", () => xp = I.ScaleXp(xpAwarded));
+        self.AddUnbankedXP(xp, teeth);
+    }
+
+    // RCheatManager.AddXP adds unbanked XP and banks it at once. Its 500 default is script only, so pass the amount.
+    private void GiveXp(int xp)
+    {
+        RCheatManager cheats = World.RequireCheats();
+        _granting = true;
+        try
+        {
+            cheats.AddXP(xp);
+        }
+        finally
+        {
+            _granting = false;
+        }
     }
 
     private static void GivePoints(int n)

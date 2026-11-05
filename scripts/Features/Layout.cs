@@ -13,8 +13,11 @@ internal static class Layout
     {
         ("PLAYER/STATUS", new Section[]
         {
-            new("SURVIVAL", "god_mode", "restore_health"),
-            new("STEALTH", "silent_running", "drone_invisible"),
+            new("SURVIVAL", "god_mode", "cant_die", "restore_health", "damage_taken", "health_regen"),
+            new("ARMOUR", "full_armour", "restore_armour"),
+            new("HITS", "no_stagger", "no_stuns"),
+            new("STEALTH", "silent_running", "drone_invisible", "thug_invisible"),
+            new("DISPLAY", "status_readout"),
         }),
         ("PLAYER/COMBAT", new Section[]
         {
@@ -41,11 +44,12 @@ internal static class Layout
         {
             new("SWITCH", "play_as", "switch_character", "back_to_batman"),
             new("SUIT", "suit", "apply_suit", "cancel_suit"),
-            new("APPEARANCE", "hide_cape", "batman_size"),
+            new("APPEARANCE", "hide_cape", "batman_size", "battle_damage", "apply_battle_damage"),
         }),
         ("PLAYER/PROGRESS", new Section[]
         {
-            new("CHANGES YOUR SAVE", "upgrade_points", "unlock_upgrades", "unlock_all", "unlock_achievements", "save_now"),
+            new("EXPERIENCE", "xp_multiplier"),
+            new("CHANGES YOUR SAVE", "upgrade_points", "give_xp", "unlock_upgrades", "unlock_all", "unlock_achievements", "save_now"),
             new("RIDDLER", "riddler_map", "riddler_finale"),
         }),
         ("BATMOBILE/DRIVING", new Section[]
