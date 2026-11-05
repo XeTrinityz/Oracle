@@ -232,6 +232,7 @@ internal sealed class Teleport : Module
         Place(mover, at);
         if (face is { } rotation)
             Turn(mover, rotation);
+        Settle(mover);
 
         if (remember)
             Remember(from);
@@ -781,10 +782,20 @@ internal sealed class Teleport : Module
         _checking = true;
         _timer = 0f;
         Safe.Run("district entry", () => Enter(floor.Level ?? _cell));
-        // What the game's own checkpoints do after moving the player: a clean standing pose and a fresh start.
+        Settle(mover);
+    }
+
+    /// <summary>
+    /// What the game's own checkpoints do after moving the player: a clean standing pose and a fresh start.
+    /// Without it, a player moved (or frozen and let go) mid-move can be left in a pose where WASD does nothing.
+    /// <paramref name="moved"/> false is for a player let go where he was, who only needs the pose.
+    /// </summary>
+    public static void Settle(Pawn mover, bool moved = true)
+    {
         if (mover is RPawnPlayer batman)
-            Safe.Run("landing pose", () => batman.ForceChangePose(new FName("Standing"), new FName("Relaxed"), default, false, default, default, default, 0.001f));
-        Safe.Run("player moved", () => World.Pc?.OnPlayerHasBeenMoved());
+            Safe.Run("player pose", () => batman.ForceChangePose(new FName("Standing"), new FName("Relaxed"), default, false, default, default, default, 0.001f));
+        if (moved)
+            Safe.Run("player moved", () => World.Pc?.OnPlayerHasBeenMoved());
     }
 
     /// <summary>
@@ -797,6 +808,7 @@ internal sealed class Teleport : Module
         if (!_moved)
         {
             Place(mover, _origin);
+            Settle(mover);
             return;
         }
 
@@ -805,12 +817,14 @@ internal sealed class Teleport : Module
         if (GroundAt(mover, at.X, at.Y, out Floor under) || NearestGround(mover, out under))
         {
             Place(mover, under.At + new Vector3(0f, 0f, lift));
+            Settle(mover);
             Log.Info("Teleport: stopped on the nearest loaded ground at " + Fmt.Position(under.At) + ".");
             return;
         }
 
         Log.Info("Teleport: no loaded ground anywhere near, back to the start.");
         Place(mover, _origin);
+        Settle(mover);
     }
 
     private bool IsBad(Vector3 p)

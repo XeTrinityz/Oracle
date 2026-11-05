@@ -155,6 +155,8 @@ internal sealed partial class WorldEditor
 
         p.SetPhysics(Actor.EPhysics.PHYS_Falling, true);
         p.Velocity = Vector3.Zero;
+        if (!quiet)
+            Teleport.Settle(p);
     }
 
     /// <summary>The menu and radial unmute every key when they close, so the mode takes its keys back after them.</summary>

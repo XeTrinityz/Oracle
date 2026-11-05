@@ -71,7 +71,7 @@ internal sealed class FreeCam : Module
 
     // ---- Batman, held still while flying
     private nint _pawn;
-    private bool _held, _wasTickOff, _wasAnimsPaused;
+    private bool _held, _wasTickOff, _wasAnimsPaused, _wasGrounded;
 
     // ---- the game camera's pitch limits, opened up while flying so the mouse can look straight up or down
     private nint _pinCam;
@@ -283,6 +283,7 @@ internal sealed class FreeCam : Module
         _held = true;
         _wasTickOff = p.bTickIsDisabled;
         _wasAnimsPaused = p.Mesh is { IsValid: true } mesh && mesh.bPauseAnims;
+        _wasGrounded = p.Physics == Actor.EPhysics.PHYS_Walking;
         Still(p);
     }
 
@@ -313,6 +314,11 @@ internal sealed class FreeCam : Module
                 p.SetTickIsDisabled(_wasTickOff);
             if (p.Mesh is { IsValid: true } mesh && mesh.bPauseAnims != _wasAnimsPaused)
                 mesh.bPauseAnims = _wasAnimsPaused;
+
+            // Frozen mid-move, he can wake up in a pose where WASD does nothing. Mid-air he is left alone, so a
+            // glide or a fall carries on; landing gives him a fresh pose anyway.
+            if (_wasGrounded)
+                Teleport.Settle(p, moved: false);
         });
     }
 
@@ -416,6 +422,7 @@ internal sealed class FreeCam : Module
         Release();
         Teleport.Place(p, floor + Vector3.UnitZ * Teleport.Lift(p), new Rotator(0f, _yaw, 0f));
         p.SetPhysics(Actor.EPhysics.PHYS_Falling, true);
+        Teleport.Settle(p);
         Stop(false);
     }
 
