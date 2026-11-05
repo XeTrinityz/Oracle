@@ -211,10 +211,14 @@ internal static class Layout
             new("LIBRARY", "music_rescan", "music_folder"),
             new("GAME SOUNDS", "sound_refresh", "sound_filter", "sound_event", "sound_play", "sound_stop", "sound_use_teleport", "sound_teleport", "sound_dump"),
         }),
-        ("SYSTEM/GENERAL", new Section[]
+        ("SYSTEM/CHEATS", new Section[]
         {
-            new("BEHAVIOUR", "remember_cheats", "apply_delay", "run_unfocused", "game_debug_keys"),
+            new("BEHAVIOUR", "remember_cheats", "apply_delay"),
             new("RESET", "all_off", "auto_fight_forget"),
+        }),
+        ("SYSTEM/GAME", new Section[]
+        {
+            new("BEHAVIOUR", "run_unfocused", "game_debug_keys"),
         }),
         ("SYSTEM/SAVES", new Section[]
         {

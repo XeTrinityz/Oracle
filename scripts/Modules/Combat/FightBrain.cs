@@ -272,7 +272,7 @@ internal sealed partial class Combat
         {
             var lines = new List<string>
             {
-                "# What Oracle's AUTO FIGHT has learned. It ships trained and keeps learning from your fights. FORGET AUTO FIGHT TRAINING (SYSTEM > GENERAL), or deleting this file, starts from nothing; reinstalling Oracle brings the shipped training back.",
+                "# What Oracle's AUTO FIGHT has learned. It ships trained and keeps learning from your fights. FORGET AUTO FIGHT TRAINING (SYSTEM > CHEATS), or deleting this file, starts from nothing; reinstalling Oracle brings the shipped training back.",
                 "rate\t" + F(m.Attacks) + "\t" + F(m.EnemySeconds),
                 "hold\t" + F(m.Hold),
                 "pounce\t" + F(m.Pounce.Ok) + "\t" + F(m.Pounce.Bad),
