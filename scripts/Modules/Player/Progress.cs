@@ -111,8 +111,15 @@ internal sealed class NewGamePlus : Module
     private const string BootKey = "NgppAtBoot";
     private const string ButtonLabel = "NEW GAME ++";
 
+    // START NEW GAME + NOW: set (as a UTC tick count) when Oracle quits to the main menu to start New Game + there.
+    private const string PendingKey = "NgpPending";
+    private const double PendingSeconds = 120;
+    private const float MenuSettle = 1.5f;
+
     private Toggle _setting = null!;
     private bool _askLogged;
+    private float _menuSeen;
+    private Every _menuLook;
 
     // The main menu is built once, so the choice is fixed for a game session even if the setting changes.
     private static bool ThisSession => Shared.GetValue(BootKey, false);
@@ -120,6 +127,90 @@ internal sealed class NewGamePlus : Module
     public override void Build()
     {
         _setting = AddToggle("new_game_plus_plus", "NEW GAME ++", "Adds NEW GAME ++ to the main menu once your save has a New Game + run: play New Game + again from the start. Restart the game after switching.").Setting();
+
+        Command now = AddCommand("ngp_start_now", "START NEW GAME + NOW",
+            "Starts a fresh New Game + run straight from your game: Oracle keeps a copy of your save, quits to the main menu and starts New Game + there, as the menu's own button does. Any New Game + run in this slot starts over; the main story is untouched. Needs the story finished.",
+            StartNow).Confirmed();
+        now.ConfirmPrompt = () => Safe.Try("ng+ check", () => World.Ri?.PersistentOptions is { IsValid: true } po && po.NewGamePlusStarted != 0)
+            ? "WIPE YOUR NEW GAME + RUN AND START OVER?"
+            : "START NEW GAME +?";
+    }
+
+    // ---- START NEW GAME + NOW
+    // The main menu starts New Game + with SetActiveStorySlotID(2), Live_InvalidateStoryData and a full
+    // "start batentry" load (RGFxMovieUI_MainMenu.OnFadeCompleted_Callback, fade 7). Doing that over a live story
+    // world risks carrying its state into the new run, so Oracle goes to the main menu and presses the game's
+    // own confirmed button there: PopupType NewGamePlus, then PopupRequester_Callback(none, 1), exactly what
+    // answering YES to "overwrite story progress?" runs.
+
+    private static void StartNow()
+    {
+        if (!World.InGame)
+            throw new InvalidOperationException("load into the game first");
+
+        RPlayerController pc = World.Pc ?? throw new InvalidOperationException("the game is still loading");
+        RGameInfo game = World.Info ?? throw new InvalidOperationException("the game is still loading");
+        RPersistentOptions po = World.Ri?.PersistentOptions is { IsValid: true } o ? o : throw new InvalidOperationException("the save isn't loaded");
+        if (po.NewGamePlusEnabled == 0)
+            throw new InvalidOperationException("finish the story first to unlock New Game +");
+        if (game.GetIsSaveInProgress() || Saves.I.Saving)
+            throw new InvalidOperationException("the game is saving, try again in a moment");
+        if (Characters.I.PlayingOther || Characters.I.Busy)
+            throw new InvalidOperationException("switch back to Batman first");
+
+        Saves.I.KeepCurrentSlot("before New Game +");
+        Shared.Set(PendingKey, DateTime.UtcNow.Ticks);
+        Log.Info("NEW GAME +: quitting to the main menu to start a fresh run there.");
+        Menu.Close();
+        pc.FE_ExitToFrontend();
+    }
+
+    public override void Frame()
+    {
+        long since = Shared.GetValue(PendingKey, 0L);
+        if (since == 0)
+            return;
+
+        if ((DateTime.UtcNow - new DateTime(since, DateTimeKind.Utc)).TotalSeconds > PendingSeconds)
+        {
+            Shared.Set(PendingKey, null);
+            Log.Info("NEW GAME +: the main menu never came up, nothing started.");
+            Overlay.Notice("START NEW GAME + NOW", "THE MAIN MENU NEVER CAME UP", false);
+            return;
+        }
+
+        if (!World.InFrontend)
+        {
+            _menuSeen = 0f;
+            return;
+        }
+
+        if (!_menuLook.Elapsed(0.25))
+            return;
+
+        // Wait for the main menu to sit still with nothing in front of it, then press its New Game + button.
+        RGFxMovieUI_MainMenu? menu = World.All<RGFxMovieUI_MainMenu>().FirstOrDefault(m => m.IsValid);
+        if (menu == null || menu.bInputBlocked || menu.ActivePopup is { IsValid: true })
+        {
+            _menuSeen = 0f;
+            return;
+        }
+
+        _menuSeen += 0.25f;
+        if (_menuSeen < MenuSettle)
+            return;
+
+        Shared.Set(PendingKey, null);
+        if (!menu.IsNewGamePlusUnlocked())
+        {
+            Log.Info("NEW GAME +: the main menu says New Game + isn't unlocked, nothing started.");
+            Overlay.Notice("START NEW GAME + NOW", "NEW GAME + ISN'T UNLOCKED", false);
+            return;
+        }
+
+        Log.Info("NEW GAME +: starting a fresh New Game + run from the main menu.");
+        menu.PopupType = RGFxMovieUI_MainMenu.MMPopTypes.MMPopType_NewGamePlus;
+        menu.PopupRequester_Callback(null!, 1);
     }
 
     public override void Started()

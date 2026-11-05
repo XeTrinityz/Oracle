@@ -94,7 +94,9 @@ FINALE. Several Riddler and GCPD soft-locks are fixed along the way.
 **Saves.** SYSTEM > SAVES lists every save on disk, newest first, with date, slot, location, difficulty and completion:
 each slot's three rotating files, the backups the game quietly keeps in `Documents\WB Games`, and Oracle's own kept
 copies. LOAD THIS SAVE restarts from any of them in game (keeping the save you're leaving first), KEEP A COPY puts one
-where the game will never rotate it away, and SAVE NOW AND KEEP A COPY gives you a save to come back to.
+where the game will never rotate it away, and SAVE NOW AND KEEP A COPY gives you a save to come back to. START NEW
+GAME + NOW starts a fresh New Game + run straight from your game, wiping an NG+ run already under way (your save is
+kept first), and the NEW GAME ++ main-menu button lives here too.
 
 Removed from the original: the FUN page (stamina and fall damage).
 

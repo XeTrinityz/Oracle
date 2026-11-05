@@ -213,7 +213,6 @@ internal static class Layout
         ("SYSTEM/GENERAL", new Section[]
         {
             new("BEHAVIOUR", "remember_cheats", "apply_delay", "game_debug_keys"),
-            new("MAIN MENU", "new_game_plus_plus"),
             new("RESET", "all_off", "auto_fight_forget"),
         }),
         ("SYSTEM/SAVES", new Section[]
@@ -221,6 +220,7 @@ internal static class Layout
             new("BROWSE", "save_show", "save_pick", "save_refresh"),
             new("SELECTED SAVE", "save_load", "save_keep", "save_delete"),
             new("QUICK", "save_now_keep", "+save_now", "save_restart"),
+            new("NEW GAME +", "ngp_start_now", "new_game_plus_plus"),
             new("FOLDERS", "save_open_kept", "save_open_backups"),
         }),
         ("SYSTEM/MENU", new Section[]
