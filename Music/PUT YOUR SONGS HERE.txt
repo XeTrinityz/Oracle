@@ -1,0 +1,2 @@
+Drop .mp3, .wav or .wma files in this folder, then open the Oracle menu (F3) > MUSIC.
+Songs play in alphabetical order; rename them with numbers (01 ..., 02 ...) to choose the order.

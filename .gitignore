@@ -1,0 +1,28 @@
+# Made by the mod on the player's machine, never shipped
+Oracle.log
+Oracle.prev.log
+settings.toml
+settings.toml.tmp
+saved_spots.txt
+camera_slots/
+
+# The player's own songs; only the instructions file ships
+Music/*
+!Music/PUT YOUR SONGS HERE.txt
+
+# Kept locally, not published
+CHANGELOG.md
+
+# Build output from local compile checks
+bin/
+obj/
+*.csproj
+*.sln
+
+# OS and editor clutter
+Thumbs.db
+desktop.ini
+.DS_Store
+.vs/
+.vscode/
+.idea/
