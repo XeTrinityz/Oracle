@@ -25,6 +25,9 @@ internal sealed partial class Batmobile
     private const double BattleRetry = 1.0;
     private const double BattleKeysRefresh = 0.5;
 
+    // After a load, a cutscene (mod ticks stop) or getting in, input reads can be stale: wait this long first.
+    private const double BattleSettle = 2.0;
+
     private Toggle _anySkinBattle = null!;
     private HashSet<int> _battleKeys = new();
     private nint _battleKeysInput;
@@ -37,6 +40,10 @@ internal sealed partial class Batmobile
     private nint _battleForcedCar;
     private nint _battleLoggedCar;
     private nint _battleLastCar;
+    private double _battleCarSince;
+    private double _battleTickAt;
+    private string _battleWhy = "";
+    private string _battleKeyName = "";
     private bool _battleLastIn;
 
     private void BuildBattle()
@@ -50,6 +57,9 @@ internal sealed partial class Batmobile
 
     private void BattleTick()
     {
+        if (World.Pawn is not RVehicleBatmobileBase && _battleForcedCar != 0)
+            ReleaseLeftCar();
+
         if (Menu.IsOpen || World.Pc is not { } pc || pc.PlayerInput is not RPlayerInput input || World.Pawn is not RVehicleBatmobileBase car)
         {
             _battleHeld = false;
@@ -57,15 +67,25 @@ internal sealed partial class Batmobile
             return;
         }
 
+        EnsureWinchSockets(car);
         bool inBattle = InState(car, BattleState);
         if (inBattle)
             KeepSafeDriveMode(car);
+
+        // A gap in ticks means a cutscene or a load; a new pawn means the player just got in.
+        if (_battleLastCar != car.Ptr || Clock.Now - _battleTickAt > 0.5)
+            _battleCarSince = Clock.Now;
+        _battleTickAt = Clock.Now;
         bool wasInBattle = _battleLastCar == car.Ptr ? _battleLastIn : inBattle;
         _battleLastCar = car.Ptr;
         _battleLastIn = inBattle;
 
         bool toggle = input.bBatmobileBattleModeToggle;
-        bool held = BattleKeyHeld(input, inBattle) || (!toggle && input.aLeftTrigger > 0.5f);
+        bool keyHeld = BattleKeyHeld(input, inBattle);
+        bool triggerHeld = !toggle && input.aLeftTrigger > 0.5f;
+        bool held = keyHeld || triggerHeld;
+        if (held)
+            _battleWhy = keyHeld ? "battle mode key " + _battleKeyName : "left trigger " + input.aLeftTrigger.ToString("0.00");
         bool pressed = held && !_battleHeld;
         _battleHeld = held;
 
@@ -99,6 +119,15 @@ internal sealed partial class Batmobile
 
         if (_battleWant)
         {
+            if (Clock.Now - _battleCarSince < BattleSettle || pc.bCinematicMode || Safe.Try("move input check", pc.IsMoveInputIgnored))
+            {
+                // Not a press the player meant: the game is in a cutscene, has movement switched off, or just loaded.
+                _battlePending = !toggle;
+                _battleForcedAt = Clock.Now;
+                Log.Throttled("battle any skin settle", "Battle mode on any skin: ignored " + _battleWhy + " (" + (pc.bCinematicMode ? "cinematic" : Clock.Now - _battleCarSince < BattleSettle ? "just loaded or got in" : "movement input is off") + ").");
+                return;
+            }
+
             LogBattleSkin(car);
             if (!CanForceBattle(car, out string why))
             {
@@ -111,11 +140,18 @@ internal sealed partial class Batmobile
             _battleForcedCar = car.Ptr;
             car.GotoState(new FName(BattleState), FName.None, false, false);
             bool strafe = KeepSafeDriveMode(car);
-            Log.Info("Battle mode on any skin: entered battle mode (now " + car.GetStateName() + ", " + (strafe ? "battle driving" : "normal driving: the wheels have no wheel controls") + ").");
+            Log.Info("Battle mode on any skin: entered battle mode on " + _battleWhy + " (now " + car.GetStateName() + ", " + (strafe ? "battle driving" : "normal driving: the wheels have no wheel controls") + ").");
         }
         else if (!toggle && _battleForcedCar != car.Ptr)
         {
             // Holding: the game leaves its own battle mode on release; only undo what Oracle started.
+            return;
+        }
+        else if (WinchBusy(car))
+        {
+            // The game never switches modes while the winch is homing or locked on (IsReadyToTransform), and leaving
+            // here strands the winch on in pursuit mode. Stay until it lets go; the release is still pending.
+            Log.Throttled("battle any skin winch hold", "Battle mode on any skin: staying in battle mode until the winch lets go.");
             return;
         }
         else
@@ -130,15 +166,46 @@ internal sealed partial class Batmobile
             _battlePending = false;
     }
 
+    /// <summary>The winch is flying or holding on: the states IsReadyToTransform refuses a mode switch in.</summary>
+    private static bool WinchBusy(RVehicleBatmobileBase car) =>
+        car.BatmobileWinch is { IsValid: true } winch && (InState(winch, "WinchLockedOn") || InState(winch, "Homing"));
+
     private static bool CanForceBattle(RVehicleBatmobileBase car, out string why)
     {
         why = car.bBattleModeLocked ? "the story hasn't unlocked battle mode yet"
             : car.bControlledBySeqAct ? "a mission is driving the car"
             : car.MatineeControlRefCount != 0 ? "a cutscene has the car"
             : car.IsUpsideDown() ? "the car is upside down"
-            : car.BatmobileWinch is { IsValid: true } winch && (InState(winch, "WinchLockedOn") || InState(winch, "Homing")) ? "the winch is busy"
+            : WinchBusy(car) ? "the winch is busy"
             : "";
         return why.Length == 0;
+    }
+
+    /// <summary>
+    /// The player got out of a car Oracle put in battle mode. On the way out the game only removes the battle keys
+    /// (RemoveBatmobileBindsAndSetBatmanBinds) and leaves Batman's own to BattleMode.EndState, which a skin with no
+    /// transform never reaches: its TryToChangeMode('PursuitMode') always fails. Leaving the state here runs EndState
+    /// with no driver, which binds Batman's keys again.
+    /// </summary>
+    private void ReleaseLeftCar()
+    {
+        nint forced = _battleForcedCar;
+        RVehicleBatmobileBase? car = Batmobile.I.Car();
+        // Some puzzles have the car hold the winch while Batman walks off: wait for it to let go, then leave.
+        if (car is { IsValid: true } && car.Ptr == forced && WinchBusy(car))
+            return;
+
+        _battleForcedCar = 0;
+        if (car is not { IsValid: true } || car.Ptr != forced || car.Driver != null || car.bRemoteDrive)
+            return;
+
+        Safe.Run("battle any skin exit", () =>
+        {
+            if (!InState(car, BattleState))
+                return;
+            car.GotoState(new FName(PursuitState), FName.None, false, false);
+            Log.Info("Battle mode on any skin: the player got out, so the car left battle mode (now " + car.GetStateName() + ").");
+        });
     }
 
     /// <summary>Takes the car out of a battle mode Oracle put it in, when switched off or unloaded.</summary>
@@ -185,7 +252,10 @@ internal sealed partial class Batmobile
         foreach (FName key in input.PressedKeys)
         {
             if (_battleKeys.Contains(key.Index))
+            {
+                _battleKeyName = key.ToString();
                 return true;
+            }
         }
 
         return false;
@@ -211,9 +281,6 @@ internal sealed partial class Batmobile
             return;
         if (car.SimObj is not RVehicleSimBatmobile { IsValid: true } sim || car.CollisionComponent is not { IsValid: true } body || !car.HasWheelsOnGround())
             return;
-        if (car.BatmobileWinch is { IsValid: true } winch && InState(winch, "WinchLockedOn"))
-            return;
-
         Vector3 move = sim.AbsoluteMoveDirection;
         string source = "move direction";
         move.Z = 0f;
@@ -251,6 +318,24 @@ internal sealed partial class Batmobile
 
         body.WakeRigidBody(FName.None);
         body.SetRBLinearVelocity(change, true);
+    }
+
+    public override void MenuOpening() => Safe.Run("batmobile controls report", ReportDriveLocks);
+
+    /// <summary>When the menu opens in the car: every flag the game uses to hold the car still, for "I can't move" reports.</summary>
+    private static void ReportDriveLocks()
+    {
+        if (World.Pawn is not RVehicleBatmobileBase car || World.Pc is not { } pc)
+            return;
+
+        var sim = car.SimObj as RVehicleSimBatmobile;
+        var winch = car.BatmobileWinch;
+        Log.Info("Batmobile controls: " + Archetype(car) + " state " + car.GetStateName() + ", drive mode " + (sim?.DriveMode.ToString() ?? "?")
+            + ", controller " + pc.GetStateName() + ", cinematic " + pc.bCinematicMode + ", move input ignored " + Safe.Try("move input", pc.IsMoveInputIgnored) + " (" + pc.bIgnoreMoveInput + ")"
+            + ", max drive speed " + pc.MaxDriveSpeed + ", seq-act " + car.bControlledBySeqAct + ", matinee " + car.MatineeControlRefCount
+            + ", block throttle " + car.BlockThrottleUntilReleased + ", force battle movement " + car.bForceBattleModeMovement + ", locked in battle " + car.bLockInBattleMode
+            + ", battle locked " + car.bBattleModeLocked + ", winch " + (winch is { IsValid: true } ? winch.GetStateName() + " pull " + winch.WinchPullType : "none")
+            + ", throttle " + car.Throttle.ToString("0.00") + ", speed " + MathF.Round(car.Velocity.Length()) + ".");
     }
 
     private static string Archetype(RVehicleBatmobileBase car) => car.ObjectArchetype?.GetPathName(null) ?? "?";

@@ -184,6 +184,7 @@ internal sealed partial class Batmobile : Module
     public void Forget()
     {
         _car = null;
+        _winchMeshDone = 0;
         _weapons.Clear();
         _cannon = null;
         _refresh.Force();
