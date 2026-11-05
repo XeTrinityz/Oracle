@@ -1,3 +1,4 @@
+using System.Numerics;
 using BmSDK;
 using BmSDK.BmGame;
 using BmSDK.Engine;
@@ -25,7 +26,6 @@ internal sealed partial class Batmobile
     private const double BattleKeysRefresh = 0.5;
 
     private Toggle _anySkinBattle = null!;
-    private static Toggle _tryUnverified = null!;
     private HashSet<int> _battleKeys = new();
     private nint _battleKeysInput;
     private double _battleKeysAt = -1;
@@ -42,10 +42,8 @@ internal sealed partial class Batmobile
     private void BuildBattle()
     {
         _anySkinBattle = AddToggle("batmobile_battle_any_skin", "BATTLE MODE ON ANY SKIN",
-            "Battle mode with its weapons, dodges and winch on skins the game won't let transform. The car doesn't change shape; the controls and weapons do. Only skins confirmed safe are switched (so far Batman v Superman); others say so and are left alone.",
+            "Battle mode with its weapons, winch and camera on skins the game won't let transform. The car doesn't change shape. Skins whose wheels can't turn sideways (1989, Arkham Asylum and others) keep normal driving in battle mode instead of strafing, which would crash the game.",
             on => { if (!on) LeaveForcedBattle("switched off"); }).EveryTick(BattleTick);
-        _tryUnverified = AddToggle("batmobile_battle_unverified", "TRY UNTESTED SKINS",
-            "Lets BATTLE MODE ON ANY SKIN switch skins nobody has confirmed yet. One (the 1989 car) crashed the game a second after switching, so save first; skins that work can be added to the safe list.").Pref();
     }
 
     private static bool InState(Actor a, string state) => string.Equals(a.GetStateName().ToString(), state, StringComparison.OrdinalIgnoreCase);
@@ -60,6 +58,8 @@ internal sealed partial class Batmobile
         }
 
         bool inBattle = InState(car, BattleState);
+        if (inBattle)
+            KeepSafeDriveMode(car);
         bool wasInBattle = _battleLastCar == car.Ptr ? _battleLastIn : inBattle;
         _battleLastCar = car.Ptr;
         _battleLastIn = inBattle;
@@ -100,15 +100,6 @@ internal sealed partial class Batmobile
         if (_battleWant)
         {
             LogBattleSkin(car);
-            if (!Verified(car))
-            {
-                _battleForcedAt = Clock.Now;
-                _battlePending = !toggle;
-                Log.Throttled("battle any skin unverified", "Battle mode on any skin: " + Archetype(car) + " isn't confirmed safe in battle mode, so it was left alone.");
-                Overlay.Notice("BATTLE MODE", "NOT SAFE ON THIS SKIN YET", false);
-                return;
-            }
-
             if (!CanForceBattle(car, out string why))
             {
                 Log.Throttled("battle any skin refused", "Battle mode on any skin: not now (" + why + ").");
@@ -119,7 +110,8 @@ internal sealed partial class Batmobile
             _battleForcedAt = Clock.Now;
             _battleForcedCar = car.Ptr;
             car.GotoState(new FName(BattleState), FName.None, false, false);
-            Log.Info("Battle mode on any skin: entered battle mode (now " + car.GetStateName() + ").");
+            bool strafe = KeepSafeDriveMode(car);
+            Log.Info("Battle mode on any skin: entered battle mode (now " + car.GetStateName() + ", " + (strafe ? "battle driving" : "normal driving: the wheels have no wheel controls") + ").");
         }
         else if (!toggle && _battleForcedCar != car.Ptr)
         {
@@ -199,15 +191,130 @@ internal sealed partial class Batmobile
         return false;
     }
 
-    // Skins confirmed in game to run battle mode without a transform. The 1989 Burton car crashed the game about a
-    // second after entering (2026-11-05, native access violation, cause not yet pinned), so skins stay out until tried.
-    private static readonly string[] VerifiedSkins = { "Batmobile_Snyder_Archetype.Batmobile_Snyder" };
+    // Driving a car that can't strafe natively: Oracle moves it along the battle mode move direction.
+    // The game's own battle speed (1200 on the Asylum car) felt very slow without the battle drive mode's push, so
+    // Oracle runs at twice it (user, 2026-11-05). BATTLE MODE SPEED scales the sim value above 1.00x.
+    private const float BattleDriveSpeed = 2400f;
+    private const float BattleDriveSpeedScale = 2f;
+    private const float BattleDriveAccel = 6000f;
+    private const float BattleDriveBrake = 5000f;
+    private bool _battleDriveLogged;
+
+    /// <summary>
+    /// A car held on normal driving in battle mode gets no throttle: battle input goes into the sim's
+    /// AbsoluteMoveDirection, which only the (crashing) battle drive mode reads. So Oracle steers its horizontal
+    /// velocity toward that direction itself, like the strafing it stands in for, and brakes when the stick is let go.
+    /// </summary>
+    private void BattleDriveTick(float dt)
+    {
+        if (!_anySkinBattle.On || dt <= 0f || Menu.IsOpen || World.Pawn is not RVehicleBatmobileBase car || !InState(car, BattleState) || HasWheelControls(car))
+            return;
+        if (car.SimObj is not RVehicleSimBatmobile { IsValid: true } sim || car.CollisionComponent is not { IsValid: true } body || !car.HasWheelsOnGround())
+            return;
+        if (car.BatmobileWinch is { IsValid: true } winch && InState(winch, "WinchLockedOn"))
+            return;
+
+        Vector3 move = sim.AbsoluteMoveDirection;
+        string source = "move direction";
+        move.Z = 0f;
+        if (move.LengthSquared() < 0.0001f && World.Pc is { PlayerInput: { } input } pc)
+        {
+            // Fall back to the sticks, relative to the camera, the way the game's battle strafe check reads them.
+            float yaw = pc.Rotation.Yaw * MathF.PI / 180f;
+            var fwd = new Vector3(MathF.Cos(yaw), MathF.Sin(yaw), 0f);
+            var right = new Vector3(-fwd.Y, fwd.X, 0f);
+            move = fwd * Math.Clamp(input.aBaseY, -1f, 1f) + right * Math.Clamp(input.aStrafe, -1f, 1f);
+            source = "sticks";
+        }
+
+        float amount = Math.Min(move.Length(), 1f);
+        float maxSpeed = sim.BattleModeMaxSpeed is > 300f and < 8000f ? sim.BattleModeMaxSpeed * BattleDriveSpeedScale : BattleDriveSpeed;
+        Vector3 flat = new(car.Velocity.X, car.Velocity.Y, 0f);
+        Vector3 target = amount > 0.05f ? Vector3.Normalize(move) * maxSpeed * amount : Vector3.Zero;
+        Vector3 change = target - flat;
+        float step = (amount > 0.05f ? BattleDriveAccel : BattleDriveBrake) * dt;
+        if (change.LengthSquared() < 1f)
+            return;
+        if (change.Length() > step)
+            change = Vector3.Normalize(change) * step;
+
+        if (!_battleDriveLogged && amount > 0.05f)
+        {
+            _battleDriveLogged = true;
+            Log.Info("Battle mode on any skin: driving " + Archetype(car) + " from the " + source + " at up to " + MathF.Round(maxSpeed) + " (sim battle speed " + MathF.Round(sim.BattleModeMaxSpeed) + ").");
+        }
+
+        // Drive the wheels along the nose too, reversing for backward moves: with no throttle the car brakes
+        // against being pushed backwards. Sideways is left to the push.
+        float nose = amount > 0.05f ? Vector3.Dot(Vector3.Normalize(move) * amount, car.Rotation.ToDirection() with { Z = 0f }) : 0f;
+        car.Throttle = Math.Clamp(nose, -1f, 1f);
+
+        body.WakeRigidBody(FName.None);
+        body.SetRBLinearVelocity(change, true);
+    }
 
     private static string Archetype(RVehicleBatmobileBase car) => car.ObjectArchetype?.GetPathName(null) ?? "?";
 
-    /// <summary>A skin with its own transform is the game's normal battle mode; anything else must be on the list.</summary>
-    private static bool Verified(RVehicleBatmobileBase car) =>
-        car.TransformationAnimNode is { IsValid: true } || VerifiedSkins.Contains(Archetype(car), StringComparer.OrdinalIgnoreCase) || _tryUnverified.On;
+    /// <summary>
+    /// Battle drive mode (strafing) moves the car through each wheel's RSkelControlBatmobileWheel, and the native code reads it
+    /// without a null check once the car moves (exe 0x140067d2c, WheelControl+0x164). Skins whose meshes have no wheel
+    /// controls (1989, Arkham Asylum; crashed 2026-11-05) only drive safely in BMDM_Drive, which skips that code.
+    /// </summary>
+    private static bool HasWheelControls(RVehicleBatmobileBase car)
+    {
+        int n = 0;
+        foreach (SVehicleWheel wheel in car.Wheels)
+        {
+            if (wheel is not { IsValid: true } || !IsWheelControl(wheel.WheelControl))
+                return false;
+            n++;
+        }
+
+        return n > 0;
+    }
+
+    /// <summary>
+    /// The native loop drops any control that isn't an RSkelControlBatmobileWheel (the class it looks up in BmGame), then
+    /// reads it anyway. The 1966 and Arkham Asylum cars have plain SkelControlWheels and crashed 2026-11-05. Tested on
+    /// the class chain the way the native does; read in C# because ClassIsChildOf is a static native.
+    /// </summary>
+    private static bool IsWheelControl(GameObject? control)
+    {
+        if (control is not { IsValid: true } || control.Class is not { } cls)
+            return false;
+
+        nint wanted = RSkelControlBatmobileWheel.StaticClass().Ptr;
+        foreach (Struct s in cls.EnumerateSupersAndSelf())
+        {
+            if (s.Ptr == wanted)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string WheelControls(RVehicleBatmobileBase car)
+    {
+        try
+        {
+            return string.Join("/", car.Wheels.Select(w => w is { IsValid: true } && w.WheelControl is { IsValid: true } c ? c.Class?.GetPathName(null) ?? "?" : "none"));
+        }
+        catch (Exception ex)
+        {
+            return "? (" + ex.GetType().Name + ")";
+        }
+    }
+
+    /// <summary>In battle mode, puts a car without wheel controls back on normal driving. Returns true when it may strafe.</summary>
+    private static bool KeepSafeDriveMode(RVehicleBatmobileBase car)
+    {
+        if (HasWheelControls(car))
+            return true;
+
+        if (car.SimObj is RVehicleSimBatmobile { IsValid: true } sim && sim.DriveMode == RVehicleSimBatmobile.EBatmobileDriveMode.BMDM_BattleMode)
+            sim.SetDriveMode(RVehicleSimBatmobile.EBatmobileDriveMode.BMDM_Drive);
+        return false;
+    }
 
     private static string Has(GameObject? o) => o is { IsValid: true } ? "y" : "-";
 
@@ -228,7 +335,7 @@ internal sealed partial class Batmobile
                     pitchSet++;
             }
 
-            Log.Info("Battle mode on any skin: " + Archetype(car) + " (" + (Verified(car) ? "verified" : "not verified") + "), state " + car.GetStateName()
+            Log.Info("Battle mode on any skin: " + Archetype(car) + " (" + (HasWheelControls(car) ? "wheel controls " : "no wheel controls ") + WheelControls(car) + "), state " + car.GetStateName()
                 + ", ready " + car.IsReadyToTransform()
                 + ", transform " + Has(car.TransformationAnimNode) + ", turret " + Has(car.TurretController) + ", pitch " + pitchSet + "/" + pitch.Count
                 + ", armour blend " + Has(car.ArmourBlendNode) + ", cockpit " + Has(car.CockpitAnimNode) + ", air brakes " + Has(car.AirBrakeLeftNode) + Has(car.AirBrakeRightNode)

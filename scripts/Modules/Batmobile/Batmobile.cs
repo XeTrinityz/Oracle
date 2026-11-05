@@ -123,6 +123,7 @@ internal sealed partial class Batmobile : Module
     {
         AutopilotTick(dt);
         DriveTick(dt);
+        BattleDriveTick(dt);
         StatsTick(dt);
     }
 
