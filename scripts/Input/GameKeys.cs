@@ -50,6 +50,9 @@ internal static unsafe class GameKeys
     private static HashSet<int>? _pointerKeys;
     private static HashSet<int>? _editorKeys;
     private static int _mark = -1;
+    private static readonly List<(int Slot, int Index, int Number, string Command)> _blocked = new();
+    private static nint _blockedInput;
+    private static int _blockMark = -1;
     private static int _stride;
     private static nint _input;
     private static bool _warned;
@@ -139,6 +142,116 @@ internal static unsafe class GameKeys
             _muted.Clear();
             _input = 0;
         }
+    }
+
+    /// <summary>
+    /// Renames, until <see cref="UnblockDebug"/>, every binding whose commands all pass <paramref name="isDebug"/>
+    /// (see <see cref="DebugKeys"/>). It uses its own mark, so the menu's muting never touches these. Safe to call
+    /// again: bindings already switched off are skipped. Returns how many were switched off by this call.
+    /// </summary>
+    public static int BlockDebug(PlayerController pc, Func<string, bool> isDebug)
+    {
+        if (pc.PlayerInput is not { } input || !Read(input.Bindings.Ptr, out byte* data, out int count))
+            return 0;
+
+        if (_blockMark < 0)
+            _blockMark = new FName("OracleDebugKeyOff").Index;
+        if (_mark < 0)
+            _mark = new FName("OracleMenuMuted").Index;
+        if (input.Ptr != _blockedInput)
+        {
+            _blocked.Clear();
+            _blockedInput = input.Ptr;
+        }
+
+        int added = 0;
+        for (int i = 0; i < count; i++)
+        {
+            byte* e = data + i * _stride;
+            int* name = (int*)e;
+            if (name[0] == _blockMark || Command(e) is not { } command || !AllDebug(command, isDebug))
+                continue;
+
+            int index = name[0], number = name[1];
+            if (index == _mark)
+            {
+                // The open menu has this one muted. Take it over, or the menu gives it back when it closes.
+                int held = input.Ptr == _input ? _muted.FindIndex(m => m.Slot == i) : -1;
+                if (held < 0)
+                    continue;
+
+                (index, number) = (_muted[held].Index, _muted[held].Number);
+                _muted.RemoveAt(held);
+            }
+
+            _blocked.Add((i, index, number, command));
+            name[0] = _blockMark;
+            name[1] = 0;
+            added++;
+        }
+
+        return added;
+    }
+
+    /// <summary>Puts back what <see cref="BlockDebug"/> switched off, where a binding still carries its mark and command.</summary>
+    public static void UnblockDebug(PlayerController? pc)
+    {
+        if (_blocked.Count == 0)
+            return;
+
+        try
+        {
+            if (pc?.PlayerInput is not { } input || input.Ptr != _blockedInput || !Read(input.Bindings.Ptr, out byte* data, out int count))
+                return;
+
+            foreach ((int slot, int index, int number, string command) in _blocked)
+            {
+                if (slot >= count)
+                    continue;
+
+                byte* e = data + slot * _stride;
+                int* name = (int*)e;
+                if (name[0] == _blockMark && Command(e) == command)
+                {
+                    name[0] = index;
+                    name[1] = number;
+                }
+            }
+        }
+        finally
+        {
+            _blocked.Clear();
+            _blockedInput = 0;
+        }
+    }
+
+    /// <summary>A binding's command string, or null when it has none.</summary>
+    private static string? Command(byte* entry)
+    {
+        char* text = *(char**)(entry + 8);
+        int len = *(int*)(entry + 16);
+        return text == null || len <= 1 ? null : new string(text, 0, len - 1);
+    }
+
+    /// <summary>True when every command in "A | OnRelease B | C x" passes the check.</summary>
+    private static bool AllDebug(string command, Func<string, bool> isDebug)
+    {
+        int seen = 0;
+        foreach (string raw in command.Split('|'))
+        {
+            string part = raw.Trim();
+            if (part.StartsWith("OnRelease ", StringComparison.OrdinalIgnoreCase))
+                part = part[10..].TrimStart();
+            if (part.Length == 0)
+                continue;
+
+            int space = part.IndexOf(' ');
+            if (!isDebug(space < 0 ? part : part[..space]))
+                return false;
+            seen++;
+        }
+
+        return seen > 0;
     }
 
     /// <summary>Reads the array header and checks every entry looks like a key binding before anything is written.</summary>
