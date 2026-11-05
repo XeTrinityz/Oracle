@@ -57,7 +57,7 @@ repair, EMP-proofing and self-righting, engine power and tyre grip, a jump with 
 fights for you while you drive, shooting down incoming missiles, every weapon armed, no reload or overheat, a
 speedometer with driving stats, and Showcase skins.
 
-**Player.** Gadget cheats (no cooldown, use anywhere, unlimited disruptor), Showcase suits applied on the spot,
+**Player.** Gadget cheats (no cooldown, use anywhere, unlimited disruptor, auto password hacks), Showcase suits applied on the spot,
 upgrade points and unlocks, SAVE GAME NOW, and a Riddler page: reveal every trophy on the map, or SKIP TO RIDDLER
 FINALE. Several Riddler and GCPD soft-locks are fixed along the way.
 

@@ -42,6 +42,9 @@ internal sealed class Gadgets : Module
         _allTargets = AddToggle("disruptor_all_targets", "DISRUPT ANY TARGET",
             "The disruptor works on every kind of target without buying its upgrades: drones, mines, medic packs, stun sticks, cloaked thugs, sentry dispensers and more. Turning it off goes back to the upgrades you own.",
             on => { if (!on) Safe.Run("disruptor upgrades restore", RestoreUpgrades); }).Maintain(GrantUpgrades);
+        AddToggle("auto_password_hack", "AUTO PASSWORD HACK",
+            "Remote hacking device password cracks solve themselves: start the hack as normal and every security level is cracked for you a moment later.")
+            .Maintain(SolvePasswordHack);
     }
 
     public override void Shutdown()
@@ -82,6 +85,47 @@ internal sealed class Gadgets : Module
         }
 
         self.ReduceAmmo();
+    }
+
+    // ---- AUTO PASSWORD HACK
+
+    /// <summary>How long the crack has to be on screen first, so the Flash movie has started its own game.</summary>
+    private const double HackSolveDelay = 0.75;
+
+    private nint _hackSeen;
+    private DateTime _hackSeenAt;
+
+    /// <summary>
+    /// Read from BmGame.upk: the Flash movie owns the passwords and the stick targets. When the last one is found it
+    /// calls XI_PasswordFound, then XI_OutroComplete (which sets MinigameComplete), and the special move's
+    /// Resonating.UpdateSpecialMove then runs SuccessfullActivateDisruptor: the target's SuccessfullyDisrupted, the
+    /// success animation and the normal exit. This makes those two Flash calls itself and leaves the rest to the game.
+    /// </summary>
+    private static void SolvePasswordHack()
+    {
+        foreach (RSpecialMoveInstance_OmnitronPasswordCracking crack in World.All<RSpecialMoveInstance_OmnitronPasswordCracking>())
+        {
+            if (crack.bDeleteMe || crack.GetStateName().ToString() != "Resonating")
+                continue;
+            if (crack.TheOmnitronMovie is not { IsValid: true } movie || movie.MinigameComplete)
+                continue;
+            if (crack.PlayerPawn is not { IsValid: true } pawn || pawn.Ptr != World.PawnPtr)
+                continue;
+
+            if (I._hackSeen != crack.Ptr)
+            {
+                I._hackSeen = crack.Ptr;
+                I._hackSeenAt = DateTime.UtcNow;
+            }
+
+            if ((DateTime.UtcNow - I._hackSeenAt).TotalSeconds < HackSolveDelay)
+                continue;
+
+            movie.XI_PasswordFound();
+            movie.XI_OutroComplete();
+            I._hackSeen = 0;
+            Log.Info("Auto password hack: cracked " + (crack.CurrentTarget is { IsValid: true } t ? t.Name : "the target") + ".");
+        }
     }
 
     // ---- DISRUPT ANY TARGET

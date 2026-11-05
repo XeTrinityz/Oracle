@@ -32,6 +32,7 @@ internal static class Layout
         {
             new("USE", "give_gadgets", "gadget_no_cooldown", "gadget_anywhere"),
             new("DISRUPTOR", "disruptor_unlimited", "disruptor_all_targets"),
+            new("HACKING", "auto_password_hack"),
             new("EFFECTS", "smoke_duration", "jammed_blast"),
         }),
         ("PLAYER/CHARACTER", new Section[]
