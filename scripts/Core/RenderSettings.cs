@@ -20,7 +20,7 @@ internal static class RenderSettings
     private static Dictionary<string, string> Originals =>
         Shared.Keep("RenderOriginals", () => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
 
-    private static string IniPath => Path.GetFullPath(Path.Combine(App.Dir, "..", "..", "Config", "BmSystemSettings.ini"));
+    private static string IniPath => IniFile.GamePath("BmSystemSettings.ini");
 
     private static string RecordPath => Path.Combine(App.Dir, "render_originals.txt");
 
@@ -114,41 +114,7 @@ internal static class RenderSettings
     }
 
     /// <summary>Rewrites one [SystemSettings] line of the ini, leaving every other byte as it was.</summary>
-    private static void WriteIni(string name, string value)
-    {
-        try
-        {
-            var latin1 = System.Text.Encoding.Latin1;
-            string text = File.ReadAllText(IniPath, latin1);
-            string[] lines = text.Split('\n');
-            bool inSection = false;
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string line = lines[i].TrimEnd('\r').Trim();
-                if (line.StartsWith('['))
-                {
-                    inSection = line.Equals("[SystemSettings]", StringComparison.OrdinalIgnoreCase);
-                    continue;
-                }
-
-                int eq = line.IndexOf('=');
-                if (!inSection || eq <= 0 || !line.Substring(0, eq).Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                if (line.Substring(eq + 1).Trim() == value)
-                    return;
-
-                lines[i] = name + "=" + value + (lines[i].EndsWith('\r') ? "\r" : "");
-                File.WriteAllText(IniPath, string.Join('\n', lines), latin1);
-                Log.Detail("render setting " + name + ": put the game's value " + value + " back into BmSystemSettings.ini");
-                return;
-            }
-        }
-        catch (Exception e)
-        {
-            Log.Info("render setting " + name + ": ini write failed: " + e.Message);
-        }
-    }
+    private static void WriteIni(string name, string value) => IniFile.Set(IniPath, "SystemSettings", name, value);
 
     public static void RestoreAll()
     {
@@ -186,34 +152,5 @@ internal static class RenderSettings
         return saved;
     }
 
-    /// <summary>The value saved in BmSystemSettings.ini's [SystemSettings] section.</summary>
-    private static string? IniValue(string name)
-    {
-        try
-        {
-            bool inSection = false;
-            foreach (string raw in File.ReadLines(IniPath))
-            {
-                string line = raw.Trim();
-                if (line.StartsWith('['))
-                {
-                    inSection = line.Equals("[SystemSettings]", StringComparison.OrdinalIgnoreCase);
-                    continue;
-                }
-
-                if (!inSection)
-                    continue;
-
-                int eq = line.IndexOf('=');
-                if (eq > 0 && line.Substring(0, eq).Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
-                    return line.Substring(eq + 1).Trim();
-            }
-        }
-        catch (Exception e)
-        {
-            Log.Info("render setting " + name + ": ini read failed: " + e.Message);
-        }
-
-        return null;
-    }
+    private static string? IniValue(string name) => IniFile.Get(IniPath, "SystemSettings", name);
 }

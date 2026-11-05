@@ -58,9 +58,36 @@ internal sealed class GameTweaks : Module
             "Keeps characters at their detailed models from further away. The game uses 0.80x. Higher costs frame rate in crowds.",
             0f, 0f, 4f, 0.25f, 2f, v => v <= 0f ? "GAME" : Fmt.Times(v), v => { _characterDetail = v; RenderChanged(); }).Setting();
 
+        AddChoice("texture_memory", "TEXTURE MEMORY",
+            "Memory for streamed textures. The game reserves 1 GB, which can leave buildings blurry and smeared at 4K. Saved into the game's BmEngine.ini and used from the next time the game starts. Keep it well under your graphics card's memory.",
+            PoolKeys, PoolNames, SetTexturePool).Setting();
+
         AddChoice("frame_cap", "FRAME RATE CAP",
             "Frame rate limits past the game's 30 / 60 / 90. GAME leaves the limit set in the game's own graphics menu.",
             CapKeys, CapNames, i => { _frameCap = i; ApplyEngine(); RenderChanged(); }).Setting();
+    }
+
+    // The texture streaming pool is sized once, when the engine starts, so this one is an ini edit that waits for
+    // a restart. It stays in the ini while chosen (that's the point); GAME writes the shipped value back.
+    private static readonly string[] PoolKeys = { "game", "2048", "3072", "4096", "6144", "8192" };
+    private static readonly string[] PoolNames = { "GAME", "2 GB", "3 GB", "4 GB", "6 GB", "8 GB" };
+
+    private static void SetTexturePool(int i)
+    {
+        string path = IniFile.GamePath("BmEngine.ini");
+        string want = i <= 0
+            ? IniFile.Get(IniFile.GamePath("DefaultEngine.ini"), "TextureStreaming", "PoolSize") ?? "1024"
+            : PoolKeys[Math.Clamp(i, 0, PoolKeys.Length - 1)];
+
+        string? now = IniFile.Get(path, "TextureStreaming", "PoolSize");
+        if (now == null || now == want)
+            return;
+
+        if (IniFile.Set(path, "TextureStreaming", "PoolSize", want))
+        {
+            Log.Info("TEXTURE MEMORY: BmEngine.ini PoolSize " + now + " -> " + want + " MB, used after a restart.");
+            Overlay.Notice("TEXTURE MEMORY", "RESTART THE GAME TO APPLY", true);
+        }
     }
 
     private static void RenderChanged()
