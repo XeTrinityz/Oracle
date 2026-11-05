@@ -162,8 +162,7 @@ internal sealed class TeleportTools : Module
 
     private void RefreshDistricts()
     {
-        CityCells.Ensure();
-        string[] names = Districts().ToArray();
+        string[] names = DistrictNames().ToArray();
         if (names.Length > 0)
             _district.SetOptions(names, names.Select(DistrictLabel).ToArray());
     }
@@ -184,7 +183,7 @@ internal sealed class TeleportTools : Module
     private MapPlaces.Group PlaceGroup => MapPlaces.Groups[Math.Clamp(_category.Index, 0, MapPlaces.Groups.Count - 1)];
 
     /// <summary>The ordinary numbered districts, without the special cells like CityX_98 and CityZ_T01.</summary>
-    private static IEnumerable<string> Districts() => CityCells.All.Keys
+    private static IEnumerable<string> DistrictNames() => Districts.All.Keys
         .Where(n => char.IsDigit(n[^1]) && char.IsDigit(n[^2]) && n[^2] != '9' && n[^3] == '_')
         .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
 
@@ -192,7 +191,7 @@ internal sealed class TeleportTools : Module
 
     private static string DistrictOf(Vector3 at)
     {
-        string? name = CityCells.At(at);
+        string? name = Districts.At(at);
         return name == null ? "INDOORS" : DistrictLabel(name);
     }
 
@@ -287,10 +286,10 @@ internal sealed class TeleportTools : Module
 
     private void ToDistrict()
     {
-        if (!CityCells.All.TryGetValue(_district.CurrentKey, out CityCells.Cell cell))
+        if (!Districts.All.TryGetValue(_district.CurrentKey, out Districts.Cell cell))
             throw new InvalidOperationException("pick a district first");
 
-        Teleport.I.Go(new Vector3((cell.Min.X + cell.Max.X) * 0.5f, (cell.Min.Y + cell.Max.Y) * 0.5f, 0f) + Teleport.Offset, false);
+        Teleport.I.Go(new Vector3((cell.Min.X + cell.Max.X) * 0.5f, (cell.Min.Y + cell.Max.Y) * 0.5f, 0f), false);
     }
 
     private void ToPlace()
@@ -313,15 +312,14 @@ internal sealed class TeleportTools : Module
 
     private void ToRandom()
     {
-        CityCells.Ensure();
-        string[] names = Districts().ToArray();
+        string[] names = DistrictNames().ToArray();
         if (names.Length == 0)
             throw new InvalidOperationException("the city map isn't known yet");
 
-        CityCells.Cell cell = CityCells.All[names[_random.Next(names.Length)]];
+        Districts.Cell cell = Districts.All[names[_random.Next(names.Length)]];
         float t = 0.25f + 0.5f * _random.NextSingle();
         float u = 0.25f + 0.5f * _random.NextSingle();
-        Teleport.I.Go(new Vector3(cell.Min.X + (cell.Max.X - cell.Min.X) * t, cell.Min.Y + (cell.Max.Y - cell.Min.Y) * u, 0f) + Teleport.Offset, false);
+        Teleport.I.Go(new Vector3(cell.Min.X + (cell.Max.X - cell.Min.X) * t, cell.Min.Y + (cell.Max.Y - cell.Min.Y) * u, 0f), false);
     }
 
     // ---- saved slots
@@ -370,7 +368,7 @@ internal sealed class TeleportTools : Module
         if (!Teleport.Ray(mover, from, end, out Vector3 hit, out Vector3 normal))
         {
             // Open sky: stay instant if the ground under that point is loaded, otherwise it needs the long trip.
-            if (Teleport.Ray(mover, end + Up(RoofScan), end - Up(FloorScan), out Vector3 ground, out _) && CityCells.Ready(ground))
+            if (Teleport.Ray(mover, end + Up(RoofScan), end - Up(FloorScan), out Vector3 ground, out _))
                 Teleport.I.Hop(ground + Up(Teleport.Lift(mover)), new Rotator(0, rotation.Yaw, 0));
             else
                 Teleport.I.Go(end, false);

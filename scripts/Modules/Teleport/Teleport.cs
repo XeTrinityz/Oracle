@@ -8,9 +8,12 @@ using static CeZeY.Oracle.Catalog;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// Moves the player across the city behind a fade: it hops toward the waypoint on ground that really exists,
-/// asking the game to stream each district in on the way, and checks every landing held before moving on.
-/// Short moves that stay in loaded ground use <see cref="Hop"/> instead, which is instant.
+/// Moves the player across the city behind a fade by flying them there above the rooftops. Each district becomes
+/// the game's current one as it is crossed into, exactly as when the player glides there themselves, so the game
+/// streams the next district in as a neighbour of the one being crossed. Asking the game for a far district
+/// directly was never reliable: some districts never answered. Once above the target the player is put on a
+/// floor that belongs to a loaded level and the landing is checked. Short moves onto loaded ground use
+/// <see cref="Hop"/> instead, which is instant.
 /// </summary>
 internal sealed class Teleport : Module
 {
@@ -19,38 +22,29 @@ internal sealed class Teleport : Module
     /// <summary>A place to return to: where the player stood and which way they faced.</summary>
     public readonly record struct Spot(Vector3 At, float Yaw);
 
+    /// <summary>A surface the player can stand on, and the streamed level it belongs to (null for the persistent map).</summary>
+    private readonly record struct Floor(Vector3 At, string? Level);
+
     private const string Caption = "ORACLE // RELOCATING";
     private const string ToastTitle = "TELEPORT";
+    private const string HeldKey = "teleport.held";
     private const float QuickFadeOut = 0.35f;
     private const float QuickFadeIn = 0.6f;
-    private const float FullFadeDistance = 60000f;
-    private const float MinFadeScale = 0.4f;
     private const float SlowFadeOut = 1.8f;
     private const float SlowFadeIn = 1.4f;
-    private const float SettleTime = 1f;
-    private const float GiveUpSeconds = 60f;
-    private const float WatchdogSeconds = 120f;
-    private const float StepGap = 0.5f;
+    private const float SettleTime = 0.5f;
+    private const float TextureWait = 3f;
+    private const float WatchdogSeconds = 300f;
     private const float VerifyGap = 0.6f;
-    private const float StepLength = 1000f;
-    private const float MinHop = 1500f;
     private const float ScanHeight = 40000f;
-    private const float ArrivedRange = 2500f;
-    private const float AdjacentRange = 13000f;
-    private const float WaterWait = 3f;
-    private const float BadSpotRadius = 600f;
     private const float SlipRange = 1000f;
     private const float ExactAbove = 250f;
     private const float CarLift = 150f;
     private const float UnitsPerMetre = 100f;
     private const float MinUndoMove = 200f;
-    private const int MaxIdleSteps = 40;
     private const int MaxHistory = 16;
-    private const int MaxFinalSlips = 3;
-    private const float StreamTimeout = 12f;
-    private const float StreamReassert = 1f;
-    private const float StreamSettle = 0.25f;
-    private const float HoldAbove = 300f;
+    private const int MaxSlips = 3;
+    private const float BadSpotRadius = 600f;
     private const float WalkableNormal = 0.6f;
     private const float FloorGap = 15f;
     private const float WidthScale = 0.8f;
@@ -60,70 +54,75 @@ internal sealed class Teleport : Module
     private const float BoxHalf = 4f;
     private const int CheapTraces = 4;
     private const float NoPlace = 500000f;
-    private const float RouteStep = 1500f;
-    private const float RouteAbove = 5000f;
-    private const float LegTimeout = 8f;
-    private const float LegSwitchTimeout = 3f;
-    private const float LegPass = 1f;
     private const float StandReach = 150f;
-    private const float LoadingTimeout = 45f;
-    private const float StallTimeout = 8f;
-    private const float HoldDrift = 50f;
-    private const float ProgressEvery = 2f;
-    private const float TextureWait = 4f;
-    private const float StreamSearch = 20000f;
+    private const float GroundSearch = 20000f;
+    private const float ArrivedRange = 2500f;
+    private const float CruiseAbove = 8000f;
+    private const float CruiseSpeed = 100f;
+    private const float ClimbSpeed = 100f;
+    private const float DescendSpeed = 100f;
+    private const float SlowSpeed = 40f;
+    private const float LookAhead = 12000f;
+    private const float BoundaryWait = 30f;
+    private const float CaptionEvery = 0.5f;
+    private const float FlightLogEvery = 5f;
+    private const float ArriveXY = 100f;
 
     private enum Phase
     {
         Idle,
         FadeOut,
-        Stream,
-        Travel,
+        Fly,
+        Land,
         Settle,
         FadeIn,
     }
 
-    private readonly HashSet<string> _tried = new(StringComparer.OrdinalIgnoreCase);
+    private enum Stage
+    {
+        Climb,
+        Cruise,
+        Descend,
+    }
+
     private readonly List<Vector3> _bad = new();
     private readonly List<Spot> _history = new();
     private Phase _phase;
+    private Stage _stage;
     private float _timer;
-    private float _left;
     private float _total;
-    private int _hops;
-    private float _targetLoaded;
-    private int _idleSteps;
     private Vector3 _target;
-    private Vector3 _origin;
-    private Vector3 _safe;
-    private Vector3 _landed;
-    private bool _checking;
-    private bool _final;
+    private bool _exact;
+    private Rotator? _face;
+    private bool _undoing;
+    private bool _cancelled;
     private nint _actor;
+    private Vector3 _origin;
+    private float _originYaw;
     private string _result = "";
     private bool _ok;
-    private bool _exact;
-    private int _finalSlips;
-    private bool _undoing;
-    private float _fadeScale = 1f;
-    private Slider _noFade = null!;
-    private Rotator? _face;
-    private float _originYaw;
+    private bool _moved;
+    private bool _audioFaded;
+    private bool _pausedAnims;
+    private AkEvent? _fallLoop;
+    private bool _frozen;
+    private bool _recover = Shared.GetValue(HeldKey, false);
+    private Vector3 _pos;
+    private Vector3 _dir;
+    private float _cruiseZ;
+    private string? _cell;
+    private string? _waitCell;
+    private float _waitFor;
+    private float _caption;
+    private float _flightLog;
+    private Vector3 _descendTo;
+    private Vector3 _landed;
+    private bool _checking;
+    private int _slips;
     private Choice _fade = null!;
     private Slider _arrival = null!;
     private Toggle _faceTravel = null!;
-    private string? _level;
-    private string _originLevel = "";
-    private Vector3 _hold;
-    private bool _streamed;
-    private bool _grounded;
-    private float _reassert;
-    private float _visibleFor;
-    private readonly List<(string Cell, Vector3 At)> _route = new();
-    private int _leg;
-    private bool _stallBacked;
-    private bool _frozen;
-    private float _progress;
+    private Slider _noFade = null!;
 
     public bool Busy => _phase != Phase.Idle;
 
@@ -132,21 +131,25 @@ internal sealed class Teleport : Module
     public override void Build()
     {
         AddCommand("teleport_waypoint", "TELEPORT TO WAYPOINT", "Set a waypoint on the map (Tab), then run this. Works across islands and in the Batmobile: the screen fades to black while the city loads.", GoToWaypoint).Moves();
-        _fade = AddChoice("teleport_fade", "TELEPORT FADE", "QUICK cuts to black at once. SLOW FADE dims the screen to black gently before the jump and fades back in slower.",
+        _fade = AddChoice("teleport_fade", "TELEPORT FADE", "QUICK cuts to black at once. SLOW FADE dims the screen to black gently before the trip and fades back in slower.",
             new[] { "quick", "slow" }, new[] { "QUICK", "SLOW FADE" }).Pref();
         _arrival = AddSlider("teleport_arrival_height", "ARRIVAL HEIGHT", "Arrive this high above the ground, ready to glide. OFF lands you on your feet. Not for quick moves or the Batmobile.",
             0f, 0f, 100f, 5f, 30f, Fmt.MetresOrOff).Pref();
         _faceTravel = AddToggle("teleport_face", "FACE TRAVEL DIRECTION", "After a teleport to a place, turn to face the way you travelled instead of the way you were facing.").Pref();
-        _noFade = AddSlider("teleport_no_fade_range", "NO FADE RANGE", "Teleports closer than this happen instantly if the ground there is loaded, and keep the menu open. Further ones fade, for longer the further you go. OFF always fades.",
+        _noFade = AddSlider("teleport_no_fade_range", "NO FADE RANGE", "Teleports closer than this happen instantly if the ground there is loaded, and keep the menu open. Further ones fade to black for the trip. OFF always fades.",
             150f, 0f, 500f, 25f, 300f, Fmt.MetresOrOff).Pref();
         AddCommand("teleport_back", "GO BACK", "Returns to where you were before your last teleport, facing the same way. Remembers the last 16 and forgets them when a new world loads.", Back).Moves();
-        AddCommand("teleport_cancel", "CANCEL TELEPORT", "Stops a long teleport that is still running and brings you back on the last safe ground. Bind it to a key: the menu closes while teleporting.", Cancel);
+        AddCommand("teleport_cancel", "CANCEL TELEPORT", "Stops a long teleport that is still running and sets you down on the nearest ground below. Bind it to a key: the menu closes while teleporting.", Cancel);
     }
 
     public override void WorldChanged()
     {
+        if (_phase != Phase.Idle)
+            Safe.Run("transition music", Music.I.EndTransition);
         _phase = Phase.Idle;
+        _frozen = false;
         _history.Clear();
+        Districts.Forget();
     }
 
     /// <summary>The pawn that gets moved, or a refusal saying why nothing can move right now.</summary>
@@ -199,13 +202,23 @@ internal sealed class Teleport : Module
         if (_phase == Phase.Idle || _phase == Phase.FadeIn)
             throw new InvalidOperationException("no teleport to cancel");
 
+        // In the air, cancelling means landing right here.
+        if (_phase == Phase.Fly && _stage != Stage.Descend && World.Pawn is { } flier && flier.Ptr == _actor)
+        {
+            _cancelled = true;
+            _target = _pos;
+            _exact = false;
+            _dir = Vector3.Zero;
+            Log.Info("Teleport cancelled by the player, landing here.");
+            BeginDescent(flier, 0f);
+            return;
+        }
+
         if (World.Pawn is { } mover && mover.Ptr == _actor)
             Retreat(mover);
 
-        _ok = false;
-        _result = "CANCELLED";
         Log.Info("Teleport cancelled by the player.");
-        FadeBack();
+        Finish("CANCELLED", false);
     }
 
     /// <summary>
@@ -227,9 +240,9 @@ internal sealed class Teleport : Module
     }
 
     /// <summary>
-    /// Moves the player to a target, with as little fade as the distance allows: nearby ground that is already
-    /// loaded needs none, and further trips fade for longer. An exact target keeps its height, so it can land
-    /// indoors or under a roof; otherwise only X and Y count, and the player lands on the highest ground there.
+    /// Moves the player to a target. Nearby ground that is already loaded needs no fade; anything further is a
+    /// flight behind a fade. An exact target keeps its height, so it can land indoors or under a roof; otherwise
+    /// only X and Y count, and the player lands on the highest ground there.
     /// </summary>
     public void Go(Vector3 target, bool exact, Rotator? face = null, bool undoing = false)
     {
@@ -241,42 +254,39 @@ internal sealed class Teleport : Module
 
         _target = target;
         _exact = exact;
-        _finalSlips = 0;
         _face = face;
         _undoing = undoing;
         _actor = mover.Ptr;
         _origin = mover.Location;
         _originYaw = mover.Rotation.Yaw;
-        _safe = _origin;
+        _slips = 0;
+        _bad.Clear();
         if (ArriveNow(mover))
             return;
 
-        if (World.Ri is { } ri && !InCityMap(ri, _origin))
+        if (World.Ri is { } ri && !InCityMap(_origin))
         {
             Log.Info("Teleport refused: " + Fmt.Position(_origin) + " in " + ri.CurrentLevel + " is outside every city district (streaming offset "
                 + Fmt.Position(ri.CurrentLevelStreamingOffset) + ").");
             throw new InvalidOperationException("can't teleport out of this building, leave through its exit first");
         }
 
-        _hops = 0;
-        _level = null;
-        _stallBacked = false;
-        _streamed = false;
-        _grounded = false;
-        _tried.Clear();
-        _targetLoaded = 0f;
-        _idleSteps = 0;
-        _bad.Clear();
+        _moved = false;
+        _frozen = false;
         _checking = false;
-        _final = false;
-        _left = GiveUpSeconds;
+        _cancelled = false;
         _total = 0f;
         _timer = 0f;
         _result = "";
         _phase = Phase.FadeOut;
-        _fadeScale = Math.Clamp(Vector3.Distance(_origin, _target) / FullFadeDistance, MinFadeScale, 1f);
         Menu.Close();
-        Fader.Out((Slow ? SlowFadeOut : QuickFadeOut) * _fadeScale, Slow, Caption);
+        float fade = Slow ? SlowFadeOut : QuickFadeOut;
+        Fader.Out(fade, Slow, Caption);
+        // The game's audio fade silences everything, the teleport sound included, so it only runs without one.
+        bool music = Safe.Try("transition music", Music.I.BeginTransition);
+        _audioFaded = !music;
+        if (_audioFaded)
+            Safe.Run("audio fade", () => AudioFade(false, fade));
         Log.Info("Teleport to " + Fmt.Position(_target) + " from " + Fmt.Position(_origin) + ".");
     }
 
@@ -287,11 +297,10 @@ internal sealed class Teleport : Module
         if (range <= 0f || Vector3.Distance(_origin, _target) > range)
             return false;
 
-        Safe.Try("level list", () => CityCells.ReadLevels(false));
-        if (!TargetGround(mover, out Vector3 ground) || !CityCells.Ready(ground))
+        if (!TargetGround(mover, out Floor ground))
             return false;
 
-        Hop(ground + new Vector3(0f, 0f, Lift(mover)), null, !_undoing);
+        Hop(ground.At + new Vector3(0f, 0f, Lift(mover)), null, !_undoing);
         Safe.Run("teleport arrival", Arrive);
         return true;
     }
@@ -332,7 +341,9 @@ internal sealed class Teleport : Module
 
     public override void Tick(float dt)
     {
-        CityCells.Tick();
+        if (_recover)
+            Recover();
+
         if (_phase == Phase.Idle)
             return;
 
@@ -341,20 +352,18 @@ internal sealed class Teleport : Module
         if (!valid && _phase != Phase.FadeIn)
         {
             Log.Info("Teleport cancelled: the player changed.");
-            _result = "";
-            FadeBack();
+            Finish("", false);
+            return;
         }
 
         _timer += dt;
         _total += dt;
         if (_total > WatchdogSeconds && _phase != Phase.FadeIn)
         {
-            if (valid)
-                Retreat(mover!);
             Log.Info("Teleport watchdog: stopped after " + (int)_total + " s in " + _phase + ".");
-            _result = "AS CLOSE AS POSSIBLE";
-            _ok = false;
-            FadeBack();
+            Retreat(mover!);
+            Finish("AS CLOSE AS POSSIBLE", false);
+            return;
         }
 
         switch (_phase)
@@ -364,25 +373,17 @@ internal sealed class Teleport : Module
                 {
                     _origin = mover!.Location;
                     _originYaw = mover.Rotation.Yaw;
-                    _safe = _origin;
-                    _timer = StepGap;
-                    _phase = Safe.Try("teleport stream", () => BeginStream(mover)) ? Phase.Stream : Phase.Travel;
+                    Safe.Run("teleport start", () => BeginFlight(mover));
                 }
 
                 break;
 
-            case Phase.Stream:
-                StreamStep(mover!, dt);
+            case Phase.Fly:
+                FlyStep(mover!, dt);
                 break;
 
-            case Phase.Travel:
-                _left -= dt;
-                if (_timer >= (_checking ? VerifyGap : StepGap))
-                {
-                    _timer = 0f;
-                    TravelStep(mover!);
-                }
-
+            case Phase.Land:
+                LandStep(mover!);
                 break;
 
             case Phase.Settle:
@@ -396,9 +397,47 @@ internal sealed class Teleport : Module
 
             case Phase.FadeIn:
                 if (Fader.IsClear)
+                {
                     _phase = Phase.Idle;
+                    Safe.Run("transition music", Music.I.EndTransition);
+                }
+
                 break;
         }
+    }
+
+    /// <summary>
+    /// A hot reload in the middle of a teleport loses this state while the player is still held in mid-air with
+    /// physics off. The hold is noted outside the assembly, so the fresh instance can let them fall normally.
+    /// </summary>
+    private void Recover()
+    {
+        if (World.Pawn is not { IsValid: true } pawn)
+            return;
+
+        _recover = false;
+        Shared.Set(HeldKey, false);
+        if (pawn is RVehicleBatmobileBase)
+            return;
+
+        Log.Info("Teleport: a reload interrupted a teleport, giving the player their physics back.");
+        Safe.Run("teleport recover", () => pawn.SetPhysics(Actor.EPhysics.PHYS_Falling, false));
+        if (pawn.Mesh is { IsValid: true } mesh)
+            Safe.Run("teleport recover", () => mesh.bPauseAnims = false);
+    }
+
+    private void Finish(string result, bool ok)
+    {
+        if (_cancelled && ok)
+            result = "CANCELLED";
+
+        _result = result;
+        _ok = ok;
+        _timer = 0f;
+        if (ok)
+            _phase = Phase.Settle;
+        else
+            FadeBack();
     }
 
     private void FadeBack()
@@ -413,167 +452,365 @@ internal sealed class Teleport : Module
 
         _phase = Phase.FadeIn;
         _timer = 0f;
-        Fader.In((Slow ? SlowFadeIn : QuickFadeIn) * _fadeScale, ToastTitle, _result, _ok);
+        float fade = Slow ? SlowFadeIn : QuickFadeIn;
+        Fader.In(fade, ToastTitle, _result, _ok);
+        if (_audioFaded)
+            Safe.Run("audio fade", () => AudioFade(true, fade));
+        _audioFaded = false;
     }
 
-    private void Finish(string result, bool ok)
+    /// <summary>Silences the game behind the black screen, through the same fade its cutscenes use.</summary>
+    private static void AudioFade(bool back, float seconds)
     {
-        _result = result;
-        _ok = ok;
-        _timer = 0f;
-        if (ok)
-            _phase = Phase.Settle;
+        if (World.Ri?.FadeManager is not { IsValid: true } fade)
+            return;
+
+        if (back)
+            fade.StartAudioFadeIn(seconds);
         else
-            FadeBack();
+            fade.StartAudioFadeOut(seconds);
     }
 
-    private void TravelStep(Pawn mover)
+    // ---- flying there
+
+    private void BeginFlight(Pawn mover)
+    {
+        _moved = true;
+        _phase = Phase.Fly;
+        _stage = Stage.Climb;
+        _timer = 0f;
+        _pos = _origin;
+        _cruiseZ = Math.Max(_origin.Z, _target.Z) + CruiseAbove;
+        _cell = Districts.At(_origin);
+        _waitCell = null;
+        _waitFor = 0f;
+        _caption = 0f;
+        _flightLog = 0f;
+        var travelled = new Vector3(_target.X - _origin.X, _target.Y - _origin.Y, 0f);
+        _dir = travelled.LengthSquared() > 1f ? Vector3.Normalize(travelled) : Vector3.Zero;
+        Log.Info("Teleport: flying " + (int)(Geo.DistXY(_origin, _target) / UnitsPerMetre) + " m from " + (_cell ?? "no district")
+            + ", cruising at " + (int)_cruiseZ + ".");
+    }
+
+    private void FlyStep(Pawn mover, float dt)
+    {
+        float yaw = _dir == Vector3.Zero ? mover.Rotation.Yaw : Rotator.FromDirection(_dir).Yaw;
+        _caption += dt;
+        if (_caption >= CaptionEvery)
+        {
+            _caption = 0f;
+            Fader.Cut(Caption + " // " + ((int)(Geo.DistXY(_pos, _target) / UnitsPerMetre)).ToString(CultureInfo.InvariantCulture) + " M"
+                + (_waitCell != null ? " // LOADING " + _waitCell.ToUpperInvariant() : ""));
+        }
+
+        switch (_stage)
+        {
+            case Stage.Climb:
+                _pos.Z = Math.Min(_cruiseZ, _pos.Z + ClimbSpeed * UnitsPerMetre * dt);
+                Fly(mover, _pos, yaw);
+                if (_pos.Z >= _cruiseZ)
+                    _stage = Stage.Cruise;
+                break;
+
+            case Stage.Cruise:
+                Cruise(mover, dt, yaw);
+                break;
+
+            case Stage.Descend:
+                _pos.Z = Math.Max(_descendTo.Z, _pos.Z - DescendSpeed * UnitsPerMetre * dt);
+                Fly(mover, _pos, yaw);
+                if (_pos.Z <= _descendTo.Z)
+                {
+                    _target = _descendTo;
+                    StartLand();
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Flies straight at the target, entering each district as its edge is crossed. The district ahead gets a
+    /// slower approach while it loads, and a wait at its edge if it still isn't in.
+    /// </summary>
+    private void Cruise(Pawn mover, float dt, float yaw)
+    {
+        float left = Geo.DistXY(_pos, _target);
+        if (left <= ArriveXY)
+        {
+            _pos.X = _target.X;
+            _pos.Y = _target.Y;
+            Fly(mover, _pos, yaw);
+            BeginDescent(mover, dt);
+            return;
+        }
+
+        float step = Math.Min(CruiseSpeed * UnitsPerMetre * dt, left);
+        Vector3 next = _pos + _dir * step;
+        string? cell = Districts.At(next);
+        if (cell != null && !cell.Equals(_cell, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Ready(mover, cell, next))
+            {
+                Wait(cell, dt);
+                if (_waitFor < BoundaryWait)
+                    return;
+
+                Log.Info("Teleport: " + cell + " still isn't loaded after " + Seconds(_waitFor) + ", crossing into it anyway.");
+            }
+            else if (_waitCell != null)
+            {
+                Log.Info("Teleport: " + cell + " loaded after a wait of " + Seconds(_waitFor) + ".");
+            }
+
+            _waitCell = null;
+            _waitFor = 0f;
+            _cell = cell;
+            Safe.Run("district entry", () => Enter(cell));
+            Log.Info("Teleport: crossed into " + cell + ", " + (int)(left / UnitsPerMetre) + " m to go.");
+        }
+        else
+        {
+            string? ahead = Districts.At(_pos + _dir * LookAhead);
+            if (ahead != null && !ahead.Equals(_cell, StringComparison.OrdinalIgnoreCase) && World.Ri is { } ri && !Loaded(ri, ahead))
+                step = Math.Min(step, SlowSpeed * UnitsPerMetre * dt);
+        }
+
+        _pos += _dir * step;
+        Fly(mover, _pos, yaw);
+
+        _flightLog += dt;
+        if (_flightLog >= FlightLogEvery)
+        {
+            _flightLog = 0f;
+            Log.Info("Teleport: en route, " + (int)(Geo.DistXY(_pos, _target) / UnitsPerMetre) + " m to go, over " + (_cell ?? "no district") + ".");
+        }
+    }
+
+    /// <summary>Holds position at a district's edge until the game has it loaded.</summary>
+    private void Wait(string cell, float dt)
+    {
+        if (_waitCell == null || !_waitCell.Equals(cell, StringComparison.OrdinalIgnoreCase))
+        {
+            _waitCell = cell;
+            _waitFor = 0f;
+            Log.Info("Teleport: waiting at the edge of " + cell + " for it to load.");
+        }
+
+        _waitFor += dt;
+    }
+
+    private static bool Loaded(RGameRI ri, string cell)
+    {
+        var name = new FName(cell);
+        return ri.IsLevelLoaded(name, true) || ri.IsLevelVisible(name, true);
+    }
+
+    /// <summary>True when a district can be flown into: the game says it is in, or there is ground at the crossing point.</summary>
+    private bool Ready(Pawn mover, string cell, Vector3 at) =>
+        World.Ri is not { } ri || Loaded(ri, cell) || GroundAt(mover, at.X, at.Y, out _);
+
+    private void BeginDescent(Pawn mover, float dt)
+    {
+        float lift = Lift(mover);
+        if (TargetGround(mover, out Floor floor) || NearestGround(mover, out floor))
+        {
+            _descendTo = floor.At + new Vector3(0f, 0f, lift);
+            _stage = Stage.Descend;
+            _waitCell = null;
+            Log.Info("Teleport: above the target, descending to " + Fmt.Position(floor.At) + ".");
+            return;
+        }
+
+        // No ground yet: the target's own district may still be loading, so hover and give it time.
+        string cell = _cell ?? Districts.At(_target) ?? "";
+        if (cell.Length > 0)
+            Wait(cell, dt);
+        else
+            _waitFor += dt;
+
+        if (_waitFor < BoundaryWait)
+            return;
+
+        Log.Info("Teleport: no ground appeared under the target after " + Seconds(_waitFor) + ".");
+        Retreat(mover);
+        Finish("NO GROUND THERE", false);
+    }
+
+    /// <summary>Moves the flying pawn to a point, facing the way it flies. Physics is off for the whole flight.</summary>
+    private void Fly(Pawn mover, Vector3 at, float yaw)
+    {
+        var rot = new Rotator(0, yaw, 0);
+        if (!_frozen)
+        {
+            _frozen = true;
+            Shared.Set(HeldKey, true);
+            mover.SetPhysics(Actor.EPhysics.PHYS_None, false);
+            // A still Batman makes no cape or foley sound on the way; the animation comes back on landing.
+            if (mover is RPawnPlayer && mover.Mesh is { IsValid: true } mesh && !mesh.bPauseAnims)
+            {
+                mesh.bPauseAnims = true;
+                _pausedAnims = true;
+            }
+
+            // The game's falling state puts the wind-rush and cape loop back on him every tick it finds it
+            // missing, so the loop is taken off and the sound it would use is blanked until he lands.
+            if (mover is RPawnPlayer combat && combat.FallLoopSound is { IsValid: true } loop)
+            {
+                _fallLoop = loop;
+                Safe.Run("fall loop", () => combat.RemoveLoopingAudioEvent(loop));
+                combat.FallLoopSound = null!;
+            }
+        }
+
+        if (mover is RVehicleBatmobileBase car)
+        {
+            car.SetLocation(at);
+            car.SetRotation(rot);
+            car.Velocity = Vector3.Zero;
+            if (car.Mesh is { IsValid: true } mesh)
+            {
+                mesh.SetRBPosition(at);
+                mesh.SetRBRotation(rot);
+            }
+
+            return;
+        }
+
+        Place(mover, at);
+        mover.SetRotation(rot);
+    }
+
+    private static string Seconds(float t) => t.ToString("0.0", CultureInfo.InvariantCulture) + " s";
+
+    /// <summary>
+    /// Tells the game the player is in a district, the way its own volumes do when the player glides across a
+    /// boundary: the district becomes current, its neighbours stream in, and the old one is let go.
+    /// </summary>
+    private static void Enter(string? level)
+    {
+        if (World.Ri is not { } ri || level == null || !IsCity(level) || ri.CurrentLevel.ToString().Equals(level, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        RLevelVolumeOW? volume = Districts.Volume(level);
+        RLevelVolume? old = ri.CurrentLevelVolume is { IsValid: true } v ? v : null;
+        if (volume != null)
+        {
+            ri.RemovePredictedLevel();
+            volume.EnteredLevelVolume();
+            if (old != null && old.Ptr != volume.Ptr)
+                old.LevelVolumeDeactivated();
+        }
+        else
+        {
+            ri.SetCurrentLevel(new FName(level), ri, false);
+        }
+
+        Log.Detail("Teleport: entered " + level + (volume != null ? " through its volume." : "."));
+    }
+
+    private static bool IsCity(string level) => level.StartsWith("City", StringComparison.OrdinalIgnoreCase);
+
+    // ---- landing
+
+    private void StartLand()
+    {
+        _phase = Phase.Land;
+        _timer = 0f;
+        _checking = false;
+    }
+
+    /// <summary>
+    /// Puts the player on a floor at the target, or the nearest one, then checks a moment later that it held.
+    /// Every floor comes from a loaded level, and the one landed on becomes the player's district.
+    /// </summary>
+    private void LandStep(Pawn mover)
     {
         if (_checking)
         {
+            if (_timer < VerifyGap)
+                return;
+
             _checking = false;
-            bool slipped = Geo.DistXY(mover.Location, _landed) > SlipRange;
-            if (slipped || mover.Location.Z < _landed.Z - 150f)
+            bool slipped = Geo.DistXY(mover.Location, _landed) > SlipRange || mover.Location.Z < _landed.Z - 150f;
+            if (!slipped && (mover is RVehicleBatmobileBase || Standing(mover)))
             {
-                // Straight after a stream there is no proven ground nearby: the old safe spot is in a district
-                // that has since unloaded, so wait above the target again instead of falling into the void there.
-                Vector3 back = _streamed && !_grounded ? _hold : _safe;
-                Place(mover, back);
-                _bad.Add(_landed);
-                if (_final)
-                    _finalSlips++;
-                Log.Info("Teleport: ground at " + Fmt.Position(_landed) + " wasn't solid yet, back to " + Fmt.Position(back) + ".");
-            }
-            else
-            {
-                _safe = mover.Location;
-                _grounded = true;
-                bool switched = MakeCurrent(mover, _safe);
-                if (_final)
-                {
-                    Log.Info("Teleported onto " + Fmt.Position(_landed) + " after " + _hops + " hops.");
-                    Finish("DONE", true);
-                    return;
-                }
-
-                if (switched)
-                    return;
-
-                float left = Geo.DistXY(_safe, _target);
-                if (left <= ArrivedRange && !GroundAt(mover, _target.X, _target.Y, out _))
-                {
-                    Log.Info("Teleport: waypoint has no ground, stopped on the nearest ground " + (int)left + " units away.");
-                    Finish("NEAREST GROUND", true);
-                    return;
-                }
-            }
-        }
-
-        if (_left <= 0f || _idleSteps >= MaxIdleSteps)
-        {
-            bool moved = Vector3.DistanceSquared(_safe, _origin) > 100f * 100f;
-            Log.Info("Teleport: gave up, " + (moved ? "stopped as close as possible." : "no route to the waypoint."));
-            Finish(moved ? "AS CLOSE AS POSSIBLE" : "NO GROUND THERE", false);
-            return;
-        }
-
-        float lift = Lift(mover);
-        Safe.Try("level list", () => CityCells.ReadLevels(false));
-        bool targetReady = CityCells.Ready(_target);
-        if (TargetGround(mover, out Vector3 hit) && (_streamed || CityCells.Ready(hit)))
-        {
-            // A few slips can be ground still streaming in. More means the spot is too small to stand on.
-            if (_finalSlips < MaxFinalSlips)
-            {
-                MakeCurrent(mover, hit);
-                Land(mover, hit + new Vector3(0f, 0f, lift), true);
+                float off = Geo.DistXY(_landed, _target);
+                Log.Info("Teleported onto " + Fmt.Position(_landed) + " after " + Seconds(_total) + ", " + (int)off + " units from the target.");
+                Finish(off <= ArrivedRange ? "DONE" : "AS CLOSE AS POSSIBLE", true);
                 return;
             }
 
-            if (NearestGround(mover, out Vector3 beside))
+            _slips++;
+            _bad.Add(_landed);
+            Log.Info("Teleport: the floor at " + Fmt.Position(_landed) + " didn't hold (" + (slipped ? "slipped" : "nothing underfoot") + ").");
+            if (_slips >= MaxSlips)
             {
-                Log.Info("Teleport: can't stand at the target, landing beside it at " + Fmt.Position(beside) + ".");
-                Land(mover, beside + new Vector3(0f, 0f, lift), true);
-                return;
-            }
-        }
-
-        if (MakeCurrent(mover, _target))
-            return;
-
-        if (targetReady && TargetCellLoaded())
-        {
-            _targetLoaded += StepGap;
-            if (_targetLoaded >= WaterWait && NearestGround(mover, out Vector3 shore))
-            {
-                Log.Info("Teleport: waypoint is over water or a gap, landing on the nearest ground at " + Fmt.Position(shore) + ".");
-                Land(mover, shore + new Vector3(0f, 0f, lift), true);
-                return;
-            }
-        }
-
-        Vector3 from = mover.Location;
-        float dist = Geo.DistXY(from, _target);
-        if (dist <= ArrivedRange && !_checking)
-        {
-            _targetLoaded += StepGap;
-
-            // Held in the air after a stream, the player isn't standing on anything yet, so "already there" would
-            // drop them. Look around for ground, and if there is none go back rather than fall.
-            if (_streamed && !Standing(mover))
-            {
-                if (_targetLoaded < WaterWait)
-                    return;
-                if (NearestGround(mover, out Vector3 near))
-                {
-                    Log.Info("Teleport: no floor right at the target, landing on the nearest ground at " + Fmt.Position(near) + ".");
-                    Land(mover, near + new Vector3(0f, 0f, lift), true);
-                    return;
-                }
-
-                Log.Info("Teleport: no ground loaded around the target, going back.");
                 Retreat(mover);
                 Finish("NO GROUND THERE", false);
                 return;
             }
-
-            if (_targetLoaded >= 1f)
-            {
-                Log.Info("Teleport: already on the nearest ground, " + (int)dist + " units from the waypoint.");
-                Finish(_hops > 0 ? "NEAREST GROUND" : "ALREADY THERE", true);
-                return;
-            }
         }
 
-        for (float d = dist - StepLength; d >= MinHop; d -= StepLength)
+        float lift = Lift(mover);
+        if (TargetGround(mover, out Floor floor) && !IsBad(floor.At))
         {
-            float t = d / dist;
-            float x = from.X + (_target.X - from.X) * t;
-            float y = from.Y + (_target.Y - from.Y) * t;
-            if (!GroundAt(mover, x, y, out Vector3 step) || IsBad(step) || !CityCells.Ready(step))
-                continue;
-
-            _hops++;
-            _tried.Clear();
-            Log.Detail("Teleport: hop " + _hops + " to " + Fmt.Position(step) + ", " + (int)(dist - d) + " units from the waypoint.");
-            Land(mover, step + new Vector3(0f, 0f, lift), false);
+            Land(mover, floor, lift);
             return;
         }
 
-        float stayFrom = dist - MinHop;
-        if (targetReady && stayFrom > MinHop && ClosestToTarget(mover, stayFrom, out Vector3 around))
+        if (NearestGround(mover, out Floor near))
         {
-            _hops++;
-            _tried.Clear();
-            Log.Detail("Teleport: hop " + _hops + " around a gap to " + Fmt.Position(around) + ".");
-            Land(mover, around + new Vector3(0f, 0f, lift), false);
+            Log.Info("Teleport: no floor right at the target, landing on the nearest ground at " + Fmt.Position(near.At) + ".");
+            Land(mover, near, lift);
             return;
         }
 
-        if (WalkCells(mover))
-            _idleSteps = 0;
-        else
-            _idleSteps++;
+        Log.Info("Teleport: no ground loaded anywhere near the target, stopping on the nearest ground there is.");
+        Retreat(mover);
+        Finish("NO GROUND THERE", false);
+    }
+
+    private void Land(Pawn mover, Floor floor, float lift)
+    {
+        Vector3 at = floor.At + new Vector3(0f, 0f, lift);
+        Release(mover);
+        Place(mover, at);
+        _moved = true;
+        _landed = at;
+        _checking = true;
+        _timer = 0f;
+        Safe.Run("district entry", () => Enter(floor.Level ?? _cell));
+        // What the game's own checkpoints do after moving the player: a clean standing pose and a fresh start.
+        if (mover is RPawnPlayer batman)
+            Safe.Run("landing pose", () => batman.ForceChangePose(new FName("Standing"), new FName("Relaxed"), default, false, default, default, default, 0.001f));
+        Safe.Run("player moved", () => World.Pc?.OnPlayerHasBeenMoved());
+    }
+
+    /// <summary>
+    /// Puts the player back on solid ground after a failure. Before they have moved that is simply the start.
+    /// After, the start's district may already be unloading, so the nearest loaded ground wins.
+    /// </summary>
+    private void Retreat(Pawn mover)
+    {
+        Release(mover);
+        if (!_moved)
+        {
+            Place(mover, _origin);
+            return;
+        }
+
+        float lift = Lift(mover);
+        Vector3 at = mover.Location;
+        if (GroundAt(mover, at.X, at.Y, out Floor under) || NearestGround(mover, out under))
+        {
+            Place(mover, under.At + new Vector3(0f, 0f, lift));
+            Log.Info("Teleport: stopped on the nearest loaded ground at " + Fmt.Position(under.At) + ".");
+            return;
+        }
+
+        Log.Info("Teleport: no loaded ground anywhere near, back to the start.");
+        Place(mover, _origin);
     }
 
     private bool IsBad(Vector3 p)
@@ -587,142 +824,11 @@ internal sealed class Teleport : Module
         return false;
     }
 
-    private static bool NearPlayer(Pawn mover, Vector3 at)
-    {
-        string? name = CityCells.At(at);
-        if (name != null)
-            return CityCells.All[name].DistanceXY(mover.Location) <= AdjacentRange;
-        return Geo.DistXY(at, mover.Location) <= AdjacentRange + 12288f;
-    }
+    /// <summary>True once the game has streamed in the full-detail textures around the player.</summary>
+    private static bool TexturesDone() =>
+        World.Ri is not { } ri || Safe.Try("texture streaming", ri.HasAllTextureStreamingCompleted, fallback: true);
 
-    private bool ClosestToTarget(Pawn mover, float maxRadius, out Vector3 best)
-    {
-        best = default;
-        for (float r = 1500f; r <= maxRadius; r += 1500f)
-        {
-            int steps = Math.Clamp((int)(r / 400f), 12, 160);
-            float bestD = float.MaxValue;
-            bool found = false;
-            for (int i = 0; i < steps; i++)
-            {
-                float a = MathF.Tau * i / steps;
-                if (!GroundAt(mover, _target.X + MathF.Cos(a) * r, _target.Y + MathF.Sin(a) * r, out Vector3 g) || IsBad(g) || !CityCells.Ready(g))
-                    continue;
-
-                float d = Geo.DistXY(g, _target);
-                if (d < bestD)
-                {
-                    bestD = d;
-                    best = g;
-                    found = true;
-                }
-            }
-
-            if (found)
-                return true;
-        }
-
-        return false;
-    }
-
-    private bool TargetCellLoaded()
-    {
-        foreach (RLevelVolumeOW v in World.All<RLevelVolumeOW>())
-        {
-            if (v.EncompassesPoint(_target))
-                return true;
-        }
-
-        return false;
-    }
-
-    private bool NearestGround(Pawn mover, out Vector3 ground)
-    {
-        float reach = _streamed ? StreamSearch : 9000f;
-        for (float r = 500f; r <= reach; r += r < 9000f ? 500f : 1500f)
-        {
-            int steps = Math.Clamp((int)(r / 250f), 8, 96);
-            for (int i = 0; i < steps; i++)
-            {
-                float a = MathF.Tau * i / steps;
-                if (GroundAt(mover, _target.X + MathF.Cos(a) * r, _target.Y + MathF.Sin(a) * r, out ground) && !IsBad(ground) && (_streamed || CityCells.Ready(ground)))
-                    return true;
-            }
-        }
-
-        ground = default;
-        return false;
-    }
-
-    /// <summary>Asks the game to stream the district at a point. Returns true if a switch was requested.</summary>
-    private bool MakeCurrent(Pawn mover, Vector3 at)
-    {
-        if (World.Ri is not { } ri)
-            return false;
-
-        // After a direct stream the level that holds the target is already current. Switching to the district
-        // around it (a tunnel sits inside an overworld cell) would unload the very ground about to be landed on.
-        if (_streamed && _level != null && ri.CurrentLevel.ToString().Equals(_level, StringComparison.OrdinalIgnoreCase)
-            && Geo.DistXY(at, _target) <= ArrivedRange)
-            return false;
-
-        foreach (RLevelVolumeOW v in World.All<RLevelVolumeOW>())
-        {
-            if (!v.EncompassesPoint(at))
-                continue;
-
-            string level = v.Level.ToString();
-            if (level.Length == 0 || level == "None" || ri.LastStreamingLevel.ToString() == level || !NearPlayer(mover, at))
-                return false;
-
-            ri.SetCurrentLevel(v.Level, mover, false);
-            _idleSteps = 0;
-            Log.Detail("Teleport: streaming city cell " + level + ".");
-            return true;
-        }
-
-        string? cached = CityCells.At(at);
-        if (cached == null || ri.LastStreamingLevel.ToString().Equals(cached, StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (CityCells.All[cached].DistanceXY(mover.Location) > AdjacentRange)
-            return false;
-
-        return SwitchCell(ri, mover, cached);
-    }
-
-    private bool SwitchCell(RGameRI ri, Pawn mover, string name)
-    {
-        if (!_tried.Add(name) || CityCells.All[name].DistanceXY(mover.Location) > AdjacentRange)
-            return false;
-
-        ri.SetCurrentLevel(new FName(name), mover, false);
-        _idleSteps = 0;
-        Log.Detail("Teleport: streaming city cell " + name + " (remembered).");
-        return true;
-    }
-
-    private bool WalkCells(Pawn mover)
-    {
-        if (World.Ri is not { } ri)
-            return false;
-
-        string current = ri.LastStreamingLevel.ToString();
-        Vector3 from = mover.Location;
-        float dist = Vector3.Distance(from, _target);
-        for (float d = 0f; d <= dist; d += 1500f)
-        {
-            Vector3 p = Vector3.Lerp(from, _target, dist <= 0f ? 1f : d / dist);
-            string? name = CityCells.At(p);
-            if (name == null || name.Equals(current, StringComparison.OrdinalIgnoreCase) || _tried.Contains(name))
-                continue;
-            if (CityCells.All[name].DistanceXY(from) > AdjacentRange)
-                break;
-
-            return SwitchCell(ri, mover, name);
-        }
-
-        return false;
-    }
+    // ---- finding floors
 
     /// <summary>Casts a ray against world geometry. Works on anything loaded, whatever the player is doing.</summary>
     public static bool Ray(Actor from, Vector3 start, Vector3 end, out Vector3 hit, out Vector3 normal)
@@ -744,11 +850,11 @@ internal sealed class Teleport : Module
     /// one at or below it), so it can stay indoors or under a bridge. Otherwise a floor near the target's own
     /// height wins, and the highest one is used when its height says nothing.
     /// </summary>
-    private bool TargetGround(Pawn mover, out Vector3 hit)
+    private bool TargetGround(Pawn mover, out Floor hit)
     {
-        List<Vector3> all = Floors(mover, _target.X, _target.Y, ScanTop(mover), ScanBottom(mover), MaxFloors, MaxFloors * 2);
-        List<Vector3> fit = all.FindAll(f => Fits(mover, f));
-        List<Vector3> floors = fit.Count > 0 ? fit : all;
+        List<Floor> all = Floors(mover, _target.X, _target.Y, ScanTop(mover), ScanBottom(mover), MaxFloors, MaxFloors * 2);
+        List<Floor> fit = all.FindAll(f => Fits(mover, f.At));
+        List<Floor> floors = fit.Count > 0 ? fit : all;
         hit = default;
         if (floors.Count == 0)
             return false;
@@ -758,11 +864,11 @@ internal sealed class Teleport : Module
     }
 
     /// <summary>The nearest floor at or just below a height, or the lowest one above it if there is none.</summary>
-    private static Vector3 FloorUnder(List<Vector3> floors, float z)
+    private static Floor FloorUnder(List<Floor> floors, float z)
     {
-        foreach (Vector3 f in floors)
+        foreach (Floor f in floors)
         {
-            if (f.Z <= z + ExactAbove)
+            if (f.At.Z <= z + ExactAbove)
                 return f;
         }
 
@@ -770,13 +876,13 @@ internal sealed class Teleport : Module
     }
 
     /// <summary>The floor closest to a height when one is close to it, otherwise the highest.</summary>
-    private static Vector3 FloorNear(List<Vector3> floors, float z)
+    private static Floor FloorNear(List<Floor> floors, float z)
     {
-        Vector3 best = floors[0];
+        Floor best = floors[0];
         float bestGap = float.MaxValue;
-        foreach (Vector3 f in floors)
+        foreach (Floor f in floors)
         {
-            float gap = MathF.Abs(f.Z - z);
+            float gap = MathF.Abs(f.At.Z - z);
             if (gap < bestGap)
             {
                 bestGap = gap;
@@ -792,21 +898,40 @@ internal sealed class Teleport : Module
     private float ScanBottom(Pawn mover) => Math.Min(_target.Z, mover.Location.Z) - ScanHeight;
 
     /// <summary>The first floor at a point, for the cheap checks made many times a step.</summary>
-    private bool GroundAt(Pawn mover, float x, float y, out Vector3 hit)
+    private bool GroundAt(Pawn mover, float x, float y, out Floor hit)
     {
         // The ring searches call this thousands of times a step, so it may only look past a few surfaces.
-        List<Vector3> floors = Floors(mover, x, y, ScanTop(mover), ScanBottom(mover), 1, CheapTraces);
+        List<Floor> floors = Floors(mover, x, y, ScanTop(mover), ScanBottom(mover), 1, CheapTraces);
         hit = floors.Count > 0 ? floors[0] : default;
         return floors.Count > 0;
     }
 
-    /// <summary>
-    /// Surfaces on a vertical line, top first. Looks past what can't be stood on: invisible blocking volumes,
-    /// which the city uses to fence off roofs and the sky, other pawns, and walls or slopes that are too steep.
-    /// </summary>
-    private static List<Vector3> Floors(Pawn mover, float x, float y, float top, float bottom, int max, int traces)
+    /// <summary>Rings of ever wider radius around the target, for the closest ground when the spot itself has none.</summary>
+    private bool NearestGround(Pawn mover, out Floor ground)
     {
-        var found = new List<Vector3>();
+        for (float r = 500f; r <= GroundSearch; r += r < 9000f ? 500f : 1500f)
+        {
+            int steps = Math.Clamp((int)(r / 250f), 8, 96);
+            for (int i = 0; i < steps; i++)
+            {
+                float a = MathF.Tau * i / steps;
+                if (GroundAt(mover, _target.X + MathF.Cos(a) * r, _target.Y + MathF.Sin(a) * r, out ground) && !IsBad(ground.At))
+                    return true;
+            }
+        }
+
+        ground = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Surfaces on a vertical line, top first, each with the level it belongs to. Looks past what can't be
+    /// stood on: invisible blocking volumes, which the city uses to fence off roofs and the sky, other pawns,
+    /// walls or slopes that are too steep, and the low-detail stand-in scenery of districts not fully loaded.
+    /// </summary>
+    private static List<Floor> Floors(Pawn mover, float x, float y, float top, float bottom, int max, int traces)
+    {
+        var found = new List<Floor>();
         float z = top;
         for (int i = 0; i < traces && found.Count < max && z > bottom; i++)
         {
@@ -817,13 +942,56 @@ internal sealed class Teleport : Module
 
             // A trace that starts inside solid geometry can stop where it began, so step well clear of it.
             z = hit.Z >= z - 1f ? z - 200f : hit.Z - FloorGap;
-            if (what is Volume || what is Pawn || normal.Z < WalkableNormal || IsStandIn(what))
+            if (what is Volume || what is Pawn || normal.Z < WalkableNormal)
                 continue;
 
-            found.Add(hit);
+            string? level = LevelOf(what);
+            if (IsStandIn(what, level))
+                continue;
+
+            found.Add(new Floor(hit, level));
         }
 
         return found;
+    }
+
+    /// <summary>The streamed level an actor was loaded with, or null for the persistent map.</summary>
+    private static string? LevelOf(Actor what)
+    {
+        try
+        {
+            if (World.Ri is not { } ri)
+                return null;
+
+            LevelStreaming? ls = ri.GetLevelForObject(what);
+            return ls is { IsValid: true } ? ls.PackageName.ToString() : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// True for the low-detail stand-in scenery the game shows for districts that aren't fully loaded. It lives
+    /// in levels named like CityZ_19_Static_LOD1; landing on it means blurry surroundings and no real collision.
+    /// </summary>
+    private static bool IsStandIn(Actor what, string? level)
+    {
+        if (level != null)
+            return level.Contains("_LOD", StringComparison.OrdinalIgnoreCase);
+
+        try
+        {
+            string path = what.GetPathName(null);
+            int dot = path.IndexOf('.');
+            string package = dot > 0 ? path[..dot] : path;
+            return package.Contains("_LOD", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -850,116 +1018,20 @@ internal sealed class Teleport : Module
         return MathF.Abs(hit.Z - BoxHalf - surface.Z) <= WidthTolerance;
     }
 
-    /// <summary>
-    /// The direct route. The game only switches the current district in the background to one next to the one
-    /// it is on, and a blocking switch to a far one can hang it. So this walks the districts between here and
-    /// the target behind the fade: the player is held in the air inside each in turn while it streams in, and
-    /// the last is the target's own. Returns false when the target is already loaded or has no known district,
-    /// so the hop route runs instead.
-    /// </summary>
-    private bool BeginStream(Pawn mover)
+    /// <summary>True when there is something solid just under the pawn's feet, not just a hold in mid-air.</summary>
+    private static bool Standing(Pawn mover)
     {
-        if (World.Ri is not { } ri)
-            return false;
-
-        _originLevel = ri.CurrentLevel.ToString();
-        CityCells.ReadLevels(false);
-        // Loaded ground only counts for an exact target when it is the floor at the target's height, not the
-        // street above a tunnel that hasn't streamed in yet.
-        if (TargetGround(mover, out Vector3 near) && CityCells.Ready(near) && (!_exact || near.Z <= _target.Z + ExactAbove))
-            return false;
-
-        // A floor right at an exact target's height is real loaded collision, even where the district's flags
-        // say hidden: indoors, like the GCPD, the city cell around you is hidden but you're standing in it.
-        if (_exact && Vector3.Distance(near, _target) <= ExactAbove * 2f && near != default)
-            return false;
-
-        string? level = ResolveLevel(ri, mover);
-        if (level == null || level == "None")
-        {
-            Log.Info("Teleport: no district found at the target, hopping there instead.");
-            return false;
-        }
-
-        _level = level;
-        _streamed = true;
-        _hold = _exact
-            ? _target + new Vector3(0f, 0f, Lift(mover))
-            : new Vector3(_target.X, _target.Y, Math.Max(_target.Z, _origin.Z) + HoldAbove);
-        BuildRoute(ri, level);
-        Log.Info("Teleport: streaming " + string.Join(" > ", _route.Select(r => r.Cell)) + " (was " + _originLevel + ").");
-        StartLeg(mover, ri, 0);
-        return true;
+        Vector3 at = mover.Location;
+        return Ray(mover, at, at - new Vector3(0f, 0f, mover.GetCollisionHeight() + StandReach), out _, out _);
     }
 
-    /// <summary>
-    /// The districts a straight line crosses from here to the target, each with a point to wait at inside it,
-    /// ending with the target's own level and the hold point above the target.
-    /// </summary>
-    private void BuildRoute(RGameRI ri, string final)
-    {
-        _route.Clear();
-        Vector3 shift = ri.CurrentLevelStreamingOffset;
-        Vector3 a = _origin - shift;
-        Vector3 b = _target - shift;
-        float dist = Geo.DistXY(a, b);
-        float high = Math.Max(_origin.Z, _target.Z) + RouteAbove;
-        string? last = CityCells.At(a);
-        Vector3 first = default;
-        for (float d = 0f; ; d += RouteStep)
-        {
-            bool end = d >= dist;
-            Vector3 p = Vector3.Lerp(a, b, dist <= 0f || end ? 1f : d / dist);
-            string? name = CityCells.At(p);
-            if (name != null && !name.Equals(last, StringComparison.OrdinalIgnoreCase))
-            {
-                last = name;
-                first = p;
-                _route.Add((name, default));
-            }
-
-            // Wait halfway along the stretch of line inside the district, well clear of its edges.
-            if (name != null && _route.Count > 0 && name.Equals(_route[^1].Cell, StringComparison.OrdinalIgnoreCase))
-            {
-                Vector3 mid = (first + p) * 0.5f + shift;
-                _route[^1] = (name, new Vector3(mid.X, mid.Y, high));
-            }
-
-            if (end)
-                break;
-        }
-
-        if (_route.Count > 0 && _route[^1].Cell.Equals(final, StringComparison.OrdinalIgnoreCase))
-            _route[^1] = (final, _hold);
-        else
-            _route.Add((final, _hold));
-
-        // The district the game is already on needs no wait.
-        if (_route.Count > 1 && _route[0].Cell.Equals(_originLevel, StringComparison.OrdinalIgnoreCase))
-            _route.RemoveAt(0);
-    }
-
-    private void StartLeg(Pawn mover, RGameRI ri, int leg)
-    {
-        _leg = leg;
-        _timer = 0f;
-        _reassert = 0f;
-        _visibleFor = 0f;
-        _progress = 0f;
-        Place(mover, _route[leg].At);
-        ri.SetCurrentLevel(new FName(_route[leg].Cell), mover, false);
-    }
+    // ---- moving the pawn
 
     /// <summary>
     /// True when the player is in the open city's own map. Interiors like the GCPD lockup are separate persistent
     /// maps at their own offset, outside every city district, and only the game's own doors switch back from one.
-    /// Asking for a city district from there waits forever and hangs the game.
     /// </summary>
-    internal static bool InCityMap(RGameRI ri, Vector3 at)
-    {
-        CityCells.Ensure();
-        return CityCells.At(at - ri.CurrentLevelStreamingOffset) != null;
-    }
+    internal static bool InCityMap(Vector3 at) => Districts.At(at) != null;
 
     /// <summary>
     /// How far the game has shifted the whole city right now. After an interior like the GCPD the city can sit
@@ -968,266 +1040,37 @@ internal sealed class Teleport : Module
     /// </summary>
     public static Vector3 Offset => World.Ri?.CurrentLevelStreamingOffset ?? Vector3.Zero;
 
-    /// <summary>The district at the target, from the game's own lookup first and the cached cells after.</summary>
-    private string? ResolveLevel(RGameRI ri, Pawn mover)
-    {
-        bool car = mover is RVehicleBatmobileBase;
-        Vector3[] probes =
-        {
-            _target,
-            new(_target.X, _target.Y, Math.Max(_target.Z, _origin.Z)),
-        };
-
-        string? district = CityCells.At(_target - ri.CurrentLevelStreamingOffset);
-        foreach (Vector3 probe in probes)
-        {
-            string? name = CityCells.LevelName(ri.GetLevelVolumeForPoint(probe, 0f, false, false, car, -1, -1, -1));
-            if (name == null)
-                continue;
-
-            // The game's own level comes first, interiors too: the Pinkney Orphanage's grounds belong to Orphan_A1,
-            // and its district CityX_13 never loads ground by the door. If it never shows up, StreamStep falls
-            // back to the district around the target, and with no floor right at the target the nearest one wins.
-            if (!name.StartsWith("City", StringComparison.OrdinalIgnoreCase))
-                Log.Info("Teleport: the target is in " + name + ", an interior.");
-            return name;
-        }
-
-        return district;
-    }
-
-    /// <summary>Holds the player in the current district of the route until it is visible, then moves on.</summary>
-    private void StreamStep(Pawn mover, float dt)
-    {
-        if (World.Ri is not { } ri || _level == null || _leg >= _route.Count)
-        {
-            _phase = Phase.Travel;
-            return;
-        }
-
-        (string cell, Vector3 at) = _route[_leg];
-        bool lastLeg = _leg == _route.Count - 1;
-        Hold(mover, at);
-
-        var level = new FName(cell);
-        _reassert += dt;
-        if (_reassert >= StreamReassert && !ri.CurrentLevel.ToString().Equals(cell, StringComparison.OrdinalIgnoreCase))
-        {
-            _reassert = 0f;
-            ri.SetCurrentLevel(level, mover, false);
-            Log.Detail("Teleport: asked again for " + cell + ", the game was on " + ri.CurrentLevel + ".");
-        }
-
-        // Ready means the level that was asked for, which for a tunnel is not the district around it.
-        Safe.Try("level list", () => CityCells.ReadLevels(false));
-        // The game's own flags for some districts (CityX_28, CityX_13) never turn on although their ground is
-        // there, so solid ground where the player waits counts as loaded too. A landing that isn't really solid
-        // is still caught by the slip check.
-        bool current = ri.CurrentLevel.ToString().Equals(cell, StringComparison.OrdinalIgnoreCase);
-        bool loading = ri.IsLevelLoading(level);
-        bool visible = ri.IsLevelVisible(level, true) || CityCells.Shown(cell) == true
-            || (!loading && (lastLeg ? TargetGround(mover, out _) : current && GroundAt(mover, at.X, at.Y, out _)));
-        _visibleFor = visible ? _visibleFor + dt : 0f;
-
-        // The game only switches to a district next to its current one. When it won't even switch, the route
-        // has a gap the line can't see, usually water between islands. Hop the rest over real ground (bridges)
-        // from the last district that did load, instead of waiting on one that never will.
-        bool switched = ri.CurrentLevel.ToString().Equals(cell, StringComparison.OrdinalIgnoreCase);
-        if (!visible && !switched && _timer >= LegSwitchTimeout)
-        {
-            Log.Info("Teleport: the game won't switch to " + cell + " from " + ri.CurrentLevel + ", hopping the rest of the way.");
-            if (_grounded)
-                Place(mover, _safe);
-            _phase = Phase.Travel;
-            _timer = StepGap;
-            return;
-        }
-
-        // A district on the way only has to be the game's current one, so the next counts as its neighbour.
-        // Waiting for it to look loaded too cost 8 s a district on the way to the orphanage.
-        bool passed = !lastLeg && current && _timer >= LegPass;
-        // Some districts never finish at a point, like the Cauldron's map label on the edge of CityZ_19, which
-        // only has low-detail scenery there. Go back to the district before it and land on its nearest real ground.
-        if (lastLeg && loading && _leg > 0 && !_stallBacked && _timer >= StallTimeout)
-        {
-            string back = _route[_leg - 1].Cell;
-            Log.Info("Teleport: " + cell + " is still loading after " + _timer.ToString("0.0", CultureInfo.InvariantCulture)
-                + " s, using the district before it, " + back + ", and its nearest ground.");
-            _stallBacked = true;
-            _level = back;
-            _route[_leg] = (back, _hold);
-            StartLeg(mover, ri, _leg);
-            return;
-        }
-
-        // After that fallback the district only has to be current and settled; the target spot itself may be empty.
-        if (lastLeg && _stallBacked && current && !loading && _timer >= LegPass)
-            _visibleFor = StreamSettle;
-
-        _progress += dt;
-        if (lastLeg && _progress >= ProgressEvery)
-        {
-            _progress = 0f;
-            Log.Info("Teleport: waiting on " + cell + " for " + _timer.ToString("0", CultureInfo.InvariantCulture) + " s: game on "
-                + ri.CurrentLevel + ", loading " + loading + ", loaded " + ri.IsLevelLoaded(level, true) + ", visible "
-                + ri.IsLevelVisible(level, true) + ", at " + Fmt.Position(mover.Location) + ".");
-        }
-
-        float limit = lastLeg ? (loading ? LoadingTimeout : StreamTimeout) : LegTimeout;
-        if (!passed && _visibleFor < (lastLeg ? StreamSettle : 0.01f) && _timer < limit)
-            return;
-
-        string took = _timer.ToString("0.0", CultureInfo.InvariantCulture) + " s";
-        if (!lastLeg)
-        {
-            Log.Info("Teleport: " + cell + (visible ? " ready after " : passed ? " current after " : " still not visible after ") + took + ", moving on.");
-
-            // A district that loaded is real ground to fall back on: cancelling, a slip or the hop route use it.
-            if (visible && GroundAt(mover, at.X, at.Y, out Vector3 ground))
-            {
-                _safe = ground + new Vector3(0f, 0f, Lift(mover));
-                _grounded = true;
-            }
-
-            StartLeg(mover, ri, _leg + 1);
-            return;
-        }
-
-        if (_visibleFor >= StreamSettle)
-        {
-            Log.Info("Teleport: " + cell + " ready after " + took + ".");
-        }
-        else if (CityCells.At(_target - ri.CurrentLevelStreamingOffset) is { } district && !district.Equals(cell, StringComparison.OrdinalIgnoreCase))
-        {
-            // The level the game picked never showed up: try the overworld district around the target once.
-            Log.Info("Teleport: " + cell + " never reported visible, trying the district " + district + " instead.");
-            _level = district;
-            _route[_leg] = (district, _hold);
-            StartLeg(mover, ri, _leg);
-            return;
-        }
-        else
-        {
-            Log.Info("Teleport: " + cell + " never reported visible (game on " + ri.CurrentLevel + ", loaded "
-                + ri.IsLevelLoaded(level, true) + ", loading " + ri.IsLevelLoading(level) + "), looking for ground anyway.");
-        }
-
-        _phase = Phase.Travel;
-        _timer = StepGap;
-    }
-
-    /// <summary>
-    /// Puts the player back on the last ground that held. Before the first landing after a stream that is the
-    /// start, whose district has to be loaded back in first.
-    /// </summary>
-    private void Retreat(Pawn mover)
-    {
-        Release(mover);
-        // After a stream the start's district has unloaded and can't be switched back to from here, so going
-        // back there would mean falling. Stand on whatever ground is loaded nearby instead.
-        if (_streamed)
-        {
-            float lift = Lift(mover);
-            Vector3 at = mover.Location;
-            if (GroundAt(mover, at.X, at.Y, out Vector3 under) || NearestGround(mover, out under))
-            {
-                Place(mover, under + new Vector3(0f, 0f, lift));
-                Log.Info("Teleport: stopped on the nearest loaded ground at " + Fmt.Position(under) + ".");
-                return;
-            }
-
-            // The last district on the way that had ground may still be loaded: only go there if it is.
-            if (_grounded && GroundAt(mover, _safe.X, _safe.Y, out Vector3 back))
-            {
-                Place(mover, back + new Vector3(0f, 0f, lift));
-                Log.Info("Teleport: no ground near the target, back to the last loaded ground at " + Fmt.Position(back) + ".");
-                return;
-            }
-
-            Log.Info("Teleport: no loaded ground anywhere near, back to the start.");
-        }
-
-        Place(mover, _safe);
-    }
-
-    /// <summary>True once the game has streamed in the full-detail textures around the player.</summary>
-    private static bool TexturesDone() =>
-        World.Ri is not { } ri || Safe.Try("texture streaming", ri.HasAllTextureStreamingCompleted, fallback: true);
-
-    /// <summary>
-    /// True for the low-detail stand-in scenery the game shows for districts that aren't fully loaded. It lives
-    /// in packages named like CityZ_19_Static_LOD1; landing on it means blurry surroundings and no collision.
-    /// </summary>
-    private static bool IsStandIn(Actor what)
-    {
-        try
-        {
-            string path = what.GetPathName(null);
-            int dot = path.IndexOf('.');
-            string package = dot > 0 ? path[..dot] : path;
-            return package.Contains("_LOD", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Keeps the player still in mid-air while a district streams. Physics goes off so nothing falls, and the
-    /// player is only moved again on drifting: placing them every frame kept the game from ever finishing a load.
-    /// </summary>
-    private void Hold(Pawn mover, Vector3 at)
-    {
-        bool drifted = Vector3.DistanceSquared(mover.Location, at) > HoldDrift * HoldDrift;
-        if (mover is RVehicleBatmobileBase)
-        {
-            if (drifted)
-                Place(mover, at);
-            return;
-        }
-
-        if (!_frozen)
-        {
-            _frozen = true;
-            mover.SetPhysics(Actor.EPhysics.PHYS_None, false);
-            Place(mover, at);
-            return;
-        }
-
-        if (drifted)
-            Place(mover, at);
-    }
-
-    /// <summary>Gives a held player normal physics back, falling, so they settle onto whatever is below.</summary>
+    /// <summary>Gives a flying player normal physics back, falling, so they settle onto whatever is below.</summary>
     private void Release(Pawn mover)
     {
         if (!_frozen)
             return;
 
         _frozen = false;
+        Shared.Set(HeldKey, false);
+        if (_pausedAnims)
+        {
+            _pausedAnims = false;
+            if (mover.IsValid && mover.Mesh is { IsValid: true } mesh)
+                Safe.Run("teleport anims", () => mesh.bPauseAnims = false);
+        }
+
+        if (_fallLoop is { } fall)
+        {
+            _fallLoop = null;
+            if (mover.IsValid && mover is RPawnPlayer combat && fall.IsValid)
+                Safe.Run("fall loop", () => combat.FallLoopSound = fall);
+        }
+
         if (mover is not RVehicleBatmobileBase && mover.IsValid)
             Safe.Run("teleport release", () => mover.SetPhysics(Actor.EPhysics.PHYS_Falling, false));
     }
 
-    /// <summary>True when there is something solid just under the pawn's feet, not just a hold in mid-air.</summary>
-    private static bool Standing(Pawn mover)
-    {
-        Vector3 at = mover.Location;
-        return Ray(mover, at, at - new Vector3(0f, 0f, mover.GetCollisionHeight() + StandReach), out _, out _);
-    }
-
-    private void Land(Pawn mover, Vector3 at, bool final)
-    {
-        Place(mover, at);
-        Release(mover);
-        _idleSteps = 0;
-        _landed = at;
-        _checking = true;
-        _final = final;
-    }
-
-    /// <summary>Moves a pawn and stops it dead. A vehicle's rigid body has to be moved too or it snaps straight back.</summary>
+    /// <summary>
+    /// Moves a pawn and stops it dead. A character is moved the way the game's own checkpoints move it, ignoring
+    /// collision so a tight spot can't refuse the move. A vehicle's rigid body has to be moved too or it snaps
+    /// straight back.
+    /// </summary>
     public static void Place(Pawn mover, Vector3 at, Rotator? facing = null)
     {
         if (mover is RVehicleBatmobileBase car)
@@ -1236,13 +1079,18 @@ internal sealed class Teleport : Module
             return;
         }
 
-        mover.SetLocation(at);
+        if (mover is RPawn pawn)
+            pawn.SetLocationIgnoringCollision(at);
+        else
+            mover.SetLocation(at);
+
         mover.Velocity = Vector3.Zero;
     }
 
     private static void PlaceCar(RVehicleBatmobileBase car, Vector3 at, Rotator facing)
     {
         var upright = new Rotator(0, facing.Yaw, 0);
+        car.SetPhysics(Actor.EPhysics.PHYS_None, false);
         car.SetLocation(at);
         car.SetRotation(upright);
         car.Velocity = Vector3.Zero;
@@ -1256,6 +1104,7 @@ internal sealed class Teleport : Module
             mesh.WakeRigidBody();
         }
 
+        car.SetPhysics(Actor.EPhysics.PHYS_RigidBody, false);
         car.TeleportCleanup(at, upright);
     }
 }

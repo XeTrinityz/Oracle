@@ -186,6 +186,7 @@ internal static class Layout
             new("NOW PLAYING", "music_track", "music_play", "music_next", "music_prev", "music_stop"),
             new("OPTIONS", "music_volume", "music_order", "music_pause_with_game"),
             new("LIBRARY", "music_rescan", "music_folder"),
+            new("GAME SOUNDS", "sound_refresh", "sound_filter", "sound_event", "sound_play", "sound_stop", "sound_use_teleport", "sound_teleport", "sound_dump"),
         }),
         ("SYSTEM/GENERAL", new Section[]
         {

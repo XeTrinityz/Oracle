@@ -24,7 +24,7 @@ takedown cheats, freeze enemies, sky and fog looks, weather (including real NO R
 (FOV, distance, height and shoulder for walking, gliding and the Batmobile, plus presets), infinite glide, playing as
 the other characters (who can all drive the Batmobile), live Batmobile cheats, a music player for your own songs,
 NEW GAME ++, counter icons in NG+, menu colours, hotkeys, cheats remembered across loads, controller support, and
-teleport to waypoint with the city district map (`cells.cache`).
+teleport to waypoint.
 
 ## What Trinity Edition adds
 
@@ -49,8 +49,8 @@ learning brain that ships trained (`fight_brain.txt`) and keeps learning from yo
 DODGE GUNFIRE, COMBO MULTIPLIER, COMBO NEVER RESETS, ONE HIT KO, ragdoll hits, knocking off helmets, disarm on first
 hit and more.
 
-**Teleport, six tabs.** Long teleports that fade and stream the city in district by district, then land on carefully
-checked ground. Teleport to waypoint or objective, GO BACK through your last 16 teleports, the game's whole world map
+**Teleport, six tabs.** Long teleports fade to black and fly you there above the rooftops, so the city streams in
+district by district as it does when you glide, then land you on ground that belongs to a loaded level. Teleport to waypoint or objective, GO BACK through your last 16 teleports, the game's whole world map
 by category (landmarks, Riddler trophies, riddles, AR challenges, Most Wanted sites), 8 saved spots, blink and sky
 drop, and teleports to the Batmobile, enemies and trophies.
 

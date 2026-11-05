@@ -42,7 +42,7 @@ internal sealed partial class Batmobile
             throw new InvalidOperationException("you are sitting in the Batmobile");
         if (World.Pawn is not RPawnPlayer player)
             throw new InvalidOperationException("the game is still loading");
-        if (World.Ri is not { } ri || !Teleport.InCityMap(ri, player.Location))
+        if (!Teleport.InCityMap(player.Location))
             throw new InvalidOperationException("the remote doesn't reach from indoors");
 
         RVehicleBatmobileBase car = Car() ?? throw new InvalidOperationException("there's no Batmobile in this area");
