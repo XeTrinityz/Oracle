@@ -113,6 +113,9 @@ internal static class World
 
     public static WorldInfo? WorldInfo => Fetch(Game.GetWorldInfo);
 
+    /// <summary>The global engine object, which lives for the whole session (main menu included).</summary>
+    public static _Engine? GameEngine => Fetch(Game.GetEngine);
+
     public static RCheatManager? Cheats => Fetch(Game.GetCheatManager);
 
     /// <summary>The cheat manager, or a refusal a command can show.</summary>

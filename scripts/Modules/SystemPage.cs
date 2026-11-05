@@ -1,3 +1,4 @@
+using BmSDK.Engine;
 using static CeZeY.Oracle.Catalog;
 
 namespace CeZeY.Oracle;
@@ -32,6 +33,10 @@ internal sealed class SystemPage : Module
         AddSlider("pad_hold", "HOLD TO OPEN", "Seconds to hold the controller's open button (set in settings.toml, BACK by default). A shorter tap on BACK still opens the map.", 0.5f, 0f, 1.5f, 0.1f, 0.5f,
             v => v <= 0f ? "PRESS" : Fmt.Tenths(v), v => Pad.OpenHold = v).Setting().Stored("gamepad", "open_hold");
 
+        AddToggle("run_unfocused", "KEEP RUNNING IN BACKGROUND",
+            "Stops the game pausing and opening the pause menu when you click or alt-tab to another window. Oracle's keys still only work while the game is in front.",
+            on => { _runUnfocused = on; ApplyFocusPause(); }).Setting();
+
         BuildRadial();
 
         AddCommand("all_off", "TURN EVERYTHING OFF", "Switches every cheat off and puts the game back to normal.", Catalog.TurnAllOff).Setting();
@@ -43,6 +48,36 @@ internal sealed class SystemPage : Module
             "Trinity Edition: rebuilt Oracle from the ground up and added auto fight, the teleport pages, NPC control, the Batmobile tabs, Riddler tools, suits and more. Opens the project on GitHub.",
             ProjectUrl);
     }
+
+    // The game ships bPauseOnLossOfFocus=TRUE in BmEngine.ini (the engine default is FALSE). The native focus-loss
+    // handler reads it each time the window loses focus, so clearing it at runtime is enough; Held puts the
+    // game's own value back when the toggle goes off or the mod unloads.
+    private static readonly Held<_Engine, bool> FocusPause =
+        new("pause on focus loss", e => e.bPauseOnLossOfFocus, (e, v) => e.bPauseOnLossOfFocus = v);
+
+    private static bool _runUnfocused;
+    private static Every _focusCheck;
+
+    private static void ApplyFocusPause()
+    {
+        if (!_runUnfocused)
+        {
+            FocusPause.Restore();
+            return;
+        }
+
+        if (World.GameEngine is { } engine)
+            FocusPause.Set(engine, false);
+    }
+
+    // Settings apply before the engine object may be reachable, and a config reload could set the flag again.
+    public override void Frame()
+    {
+        if (_runUnfocused && _focusCheck.Elapsed(1.0))
+            ApplyFocusPause();
+    }
+
+    public override void Shutdown() => FocusPause.Restore();
 
     /// <summary>SYSTEM > RADIAL: the favourites wheel's keys, look and layout.</summary>
     private static void BuildRadial()

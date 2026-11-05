@@ -213,7 +213,7 @@ internal static class Layout
         }),
         ("SYSTEM/GENERAL", new Section[]
         {
-            new("BEHAVIOUR", "remember_cheats", "apply_delay", "game_debug_keys"),
+            new("BEHAVIOUR", "remember_cheats", "apply_delay", "run_unfocused", "game_debug_keys"),
             new("RESET", "all_off", "auto_fight_forget"),
         }),
         ("SYSTEM/SAVES", new Section[]
