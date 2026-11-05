@@ -110,7 +110,8 @@ internal static class Things
 
         void Take(Actor a, ThingKind kind)
         {
-            if (a.Ptr == me || a.Ptr == player || a.bDeleteMe)
+            // bPendingDelete is set while Destroy runs, before bDeleteMe: its parts may already be gone.
+            if (a.Ptr == me || a.Ptr == player || a.bDeleteMe || a.bPendingDelete)
                 return;
 
             bool kept = keep.Contains(a.Ptr);
@@ -270,6 +271,9 @@ internal static class Things
         {
             // Some RVehicleCars throw from the Mesh getter itself (2026-11-05, every few seconds in the log), so a
             // part that can't be read leaves the default box instead of skipping the whole thing.
+            // No generic CollisionComponent fallback: an actor with no attached colliding part is usually being torn
+            // down, and reading its CollisionComponent then hit a freed object and crashed the game (2026-11-05, NG+
+            // opening scene, an access violation no try/catch can stop). Such actors get the default box.
             PrimitiveComponent? main;
             try
             {
@@ -278,7 +282,7 @@ internal static class Things
                     Vehicle v when v.Mesh is { IsValid: true } m => m,
                     SkeletalMeshActor k when k.SkeletalMeshComponent is { IsValid: true } sk => sk,
                     DynamicSMActor d when d.StaticMeshComponent is { IsValid: true } s => s,
-                    _ => a.CollisionComponent,
+                    _ => null,
                 };
             }
             catch (Exception)

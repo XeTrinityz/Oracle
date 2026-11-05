@@ -255,7 +255,10 @@ internal sealed partial class WorldEditor : Module
             SyncRows();
         }
 
-        if ((AnyShown || _selected != null || _grab.On || _modeOn || Menu.IsOpen || Edits.Count > 0) && _scan.Elapsed(ScanSeconds))
+        // Cutscenes spawn and tear down actors fastest, which is where a half-destroyed one crashed a scan, and
+        // nothing in the list can be used during one anyway.
+        bool cinematic = Safe.Try("editor cinematic check", () => World.Pc is { } pc && CameraRig.InCinematic(pc), fallback: true);
+        if (!cinematic && (AnyShown || _selected != null || _grab.On || _modeOn || Menu.IsOpen || Edits.Count > 0) && _scan.Elapsed(ScanSeconds))
         {
             Scan();
             if (Menu.IsOpen)
