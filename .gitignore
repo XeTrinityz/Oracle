@@ -6,6 +6,7 @@ settings.toml.tmp
 saved_spots.txt
 assets.txt
 camera_slots/
+/saves/
 fight_brain.txt
 
 # The player's own songs; only the instructions file ships

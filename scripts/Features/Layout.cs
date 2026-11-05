@@ -216,6 +216,13 @@ internal static class Layout
             new("MAIN MENU", "new_game_plus_plus"),
             new("RESET", "all_off", "auto_fight_forget"),
         }),
+        ("SYSTEM/SAVES", new Section[]
+        {
+            new("BROWSE", "save_show", "save_pick", "save_refresh"),
+            new("SELECTED SAVE", "save_load", "save_keep", "save_delete"),
+            new("QUICK", "save_now_keep", "+save_now", "save_restart"),
+            new("FOLDERS", "save_open_kept", "save_open_backups"),
+        }),
         ("SYSTEM/MENU", new Section[]
         {
             new("APPEARANCE", "menu_size", "menu_position", "menu_color", "menu_font", "rainbow_speed", "menu_preview", "menu_effects", "low_end_mode", "active_list"),

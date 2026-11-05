@@ -91,6 +91,11 @@ low tunnel speed. Gadget cheats (no cooldown, use anywhere, unlimited disruptor,
 upgrade points and unlocks, SAVE GAME NOW, and a Riddler page: reveal every trophy on the map, or SKIP TO RIDDLER
 FINALE. Several Riddler and GCPD soft-locks are fixed along the way.
 
+**Saves.** SYSTEM > SAVES lists every save on disk, newest first, with date, slot, location, difficulty and completion:
+each slot's three rotating files, the backups the game quietly keeps in `Documents\WB Games`, and Oracle's own kept
+copies. LOAD THIS SAVE restarts from any of them in game (keeping the save you're leaving first), KEEP A COPY puts one
+where the game will never rotate it away, and SAVE NOW AND KEEP A COPY gives you a save to come back to.
+
 Removed from the original: the FUN page (stamina and fall damage).
 
 ## Install
@@ -100,7 +105,7 @@ Removed from the original: the FUN page (stamina and fall damage).
 3. Start the game and press **F3**.
 
 The mod writes these itself the first time it needs them, so they are not in the repository: `settings.toml` (your
-choices), `saved_spots.txt` (teleport slots), `Oracle.log` (for bug reports). Drop `.mp3`, `.wav` or `.wma` files
+choices), `saved_spots.txt` (teleport slots), `saves/` (kept save copies), `Oracle.log` (for bug reports). Drop `.mp3`, `.wav` or `.wma` files
 in `Music/` for the music player.
 
 **Updating** replaces `fight_brain.txt`, so AUTO FIGHT goes back to the training that ships with that version. Your

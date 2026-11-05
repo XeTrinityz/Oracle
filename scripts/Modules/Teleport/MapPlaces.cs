@@ -153,7 +153,7 @@ internal static class MapPlaces
     }
 
     /// <summary>Reads key=value text from a localization file, from one section or from all of them.</summary>
-    private static Dictionary<string, string> Names(string path, string? section)
+    internal static Dictionary<string, string> Names(string path, string? section)
     {
         var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string current = "";
