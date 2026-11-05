@@ -45,6 +45,8 @@ internal sealed class BatmobileSound : Module
     private string _appliedKey = "";
     private string _waitingKey = "";
     private double _waitingSince;
+    private double _probeUntil;
+    private double _probeNext;
 
     public override void Build()
     {
@@ -104,7 +106,10 @@ internal sealed class BatmobileSound : Module
         }
 
         if (_appliedKey.Equals(key, StringComparison.OrdinalIgnoreCase))
+        {
+            Probe(car, player);
             return;
+        }
 
         AkPlayerVehicleSoundInfo? donor = Resolve(key);
         if (donor == null)
@@ -116,6 +121,8 @@ internal sealed class BatmobileSound : Module
         Swap(car, player, donor);
         _appliedKey = key;
         _waitingKey = "";
+        _probeUntil = Clock.Now + 30.0;
+        _probeNext = 0;
         Overlay.Notice("ENGINE SOUND", _sound.State, true);
     }
 
@@ -232,6 +239,9 @@ internal sealed class BatmobileSound : Module
         bool driving = World.Pawn is { } pawn && pawn.Ptr == car.Ptr;
         string from = player.m_VehicleInfo?.GetPathName(null) ?? "none";
 
+        // Wheel squeal loops are keyed by wheel bone and outlive Initialize, so stop them while the old setup can
+        // still find them; otherwise they keep screeching with nothing left to update or stop them.
+        StopWheels(car);
         player.StopEngine(true);
         player.StopSockets();
         player.StopCreationEvents();
@@ -239,6 +249,7 @@ internal sealed class BatmobileSound : Module
         if (info is AkPlayerVehicleSoundInfo playerInfo)
             car.PlayerVehicleInfo = playerInfo;
         player.Initialize(info);
+        StopWheels(car);
 
         // Same order as the game: initialise in PostBeginPlay, then the player gets in and the engine starts.
         if (driving)
@@ -247,7 +258,59 @@ internal sealed class BatmobileSound : Module
             player.StartEngine();
 
         Log.Info("Engine sound: " + from + " -> " + info.GetPathName(null) + " (engine was " + (running ? "running" : "off") + ", " + (driving ? "driving" : "parked") + ", "
-            + player.NumWheels() + " wheels).");
+            + player.NumWheels() + " wheels, car wheel bones " + WheelBones(car) + ", sound wheel bones " + SoundBones(info) + ").");
+    }
+
+    private static void StopWheels(RVehicleBatmobileBase car)
+    {
+        Safe.Run("engine sound stop squeal", () =>
+        {
+            foreach (SVehicleWheel wheel in car.Wheels)
+            {
+                if (wheel is { IsValid: true })
+                    car.AudioStopWheelSqueal(wheel.BoneName);
+            }
+        });
+        Safe.Run("engine sound stop wheels", car.AudioStopAllWheels);
+        Safe.Run("engine sound squeal reset", () => car.AudioSquealing(0f));
+    }
+
+    private static string WheelBones(RVehicleBatmobileBase car)
+    {
+        try
+        {
+            return string.Join("/", car.Wheels.Where(w => w is { IsValid: true }).Select(w => w.BoneName.ToString()));
+        }
+        catch (Exception ex)
+        {
+            return "? (" + ex.GetType().Name + ")";
+        }
+    }
+
+    private static string SoundBones(AkVehicleSoundInfo info)
+    {
+        try
+        {
+            return string.Join("/", info.Wheels.Select(w => w.BoneName.ToString()));
+        }
+        catch (Exception ex)
+        {
+            return "? (" + ex.GetType().Name + ")";
+        }
+    }
+
+    /// <summary>For 30 s after a swap, logs what the sound player thinks the tyres are doing every 3 s.</summary>
+    private void Probe(RVehicleBatmobileBase car, AkVehicleSoundVar p)
+    {
+        if (!Log.Diagnostics || Clock.Now > _probeUntil || Clock.Now < _probeNext)
+            return;
+
+        _probeNext = Clock.Now + 3.0;
+        Safe.Run("engine sound probe", () => Log.Detail("Engine sound probe: speed " + MathF.Round(car.Velocity.Length()) + ", squeal " + p.dbgOverallSqueal.ToString("0.00")
+            + " ratio " + p.dbgOverallSquealRatio.ToString("0.00") + " wheels " + p.dbgOverallSqueallingWheels + ", squealing " + p.m_CurrentSquealing
+            + " forced " + p.m_ForceSquealing + " (car " + car.ForceSqueal.ToString("0.00") + "), drifting " + p.m_CurrentDrifting + ", wheelspin " + p.m_CurrentWheelSpin
+            + ", donuts " + p.m_DonutsActive + ", braking " + p.m_CurrentBraking + ", mode " + p.m_CurrentDrivingMode + ", audibles " + p.m_WheelAudibles.Count
+            + ", wheel slots " + p.m_Wheels.Count + "."));
     }
 
     private static bool Installed(string package)
