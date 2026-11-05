@@ -217,7 +217,7 @@ internal static class Layout
         }),
         ("SYSTEM/SAVES", new Section[]
         {
-            new("BROWSE", "save_show", "save_pick", "save_refresh"),
+            new("BROWSE", "save_show", "save_story", "save_pick", "save_refresh"),
             new("SELECTED SAVE", "save_load", "save_keep", "save_delete"),
             new("QUICK", "save_now_keep", "+save_now", "save_restart"),
             new("NEW GAME +", "ngp_start_now", "new_game_plus_plus"),

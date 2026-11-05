@@ -23,12 +23,19 @@ internal static class SaveFiles
     {
         /// <summary>The save's own timestamp as a FILETIME, 0 when the header couldn't be read. Same save = same stamp.</summary>
         public long Stamp { get; init; }
+
+        /// <summary>Main story and New Game + progress as the main menu shows them before DLC bonuses, -1 if unread.</summary>
+        public float Story { get; init; } = -1f;
+        public float StoryPlus { get; init; } = -1f;
+
+        /// <summary>True when the save holds a New Game + run (its progress only grows once one has started).</summary>
+        public bool HasPlus => StoryPlus > 0f;
     }
 
     private const string AppId = "208650";
     private const long SteamId64Base = 76561197960265728L;
     private const int SaveVersion = 6;
-    private const int ScanBytes = 64 * 1024;
+    private const int ScanBytes = 256 * 1024;
     private const string FileStamp = "yyyy-MM-dd_HH-mm-ss";
 
     private static readonly Regex FileName = new(@"^BAK1Save(\d)x(\d)\.sgd(?:_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d)?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -154,7 +161,8 @@ internal static class SaveFiles
                 continue;
 
             DateTime when = DateTime.FromFileTimeUtc(stamp).ToLocalTime();
-            return new Entry(path, kind, slot, xid, when, location, difficulty, Percent(head, o + 28 + len, n), true) { Stamp = stamp };
+            (float story, float plus) = StoryPercents(head, o + 28 + len, n);
+            return new Entry(path, kind, slot, xid, when, location, difficulty, Percent(head, o + 28 + len, n), true) { Stamp = stamp, Story = story, StoryPlus = plus };
         }
 
         return new Entry(path, kind, slot, xid, written, -1, "", -1, true);
@@ -185,6 +193,28 @@ internal static class SaveFiles
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// RPersistentShared.StoryOverAllPercent, one float per story slot (main, temp, New Game +), which the main menu
+    /// shows as CONTINUE STORY and CONTINUE STORY+ (plus 5% per finished DLC Most Wanted). Stored as count 3 then
+    /// the floats, with no name before it, so it is found by shape: the first such array after the options block
+    /// with main progress above zero and the temp slot at exactly 0. Checked on 2026-11-05 against 26 saves: slot 1
+    /// read 25.4 / 0, slot 3 read 100 / 2.72 (menu: 120% and 2%). A later stray 1.0 / 0 also fits, hence the first.
+    /// </summary>
+    private static (float Story, float Plus) StoryPercents(byte[] head, int from, int n)
+    {
+        for (int o = from; o + 16 <= n; o++)
+        {
+            if (BitConverter.ToInt32(head, o) != 3)
+                continue;
+
+            float story = BitConverter.ToSingle(head, o + 4), temp = BitConverter.ToSingle(head, o + 8), plus = BitConverter.ToSingle(head, o + 12);
+            if (story is > 0.01f and <= 100f && temp == 0f && plus is >= 0f and <= 100f)
+                return (story, plus);
+        }
+
+        return (-1f, -1f);
     }
 
     /// <summary>The whole file, as the game's slot screen hands it over, even while Steam has it open.</summary>

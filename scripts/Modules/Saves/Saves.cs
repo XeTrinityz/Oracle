@@ -25,6 +25,8 @@ internal sealed class Saves : Module
     private const string PickHelp = "Every save Oracle can find, newest first. Hold left or right to scroll. Details of the selected save show here.";
 
     private Choice _show = null!;
+    private Choice _story = null!;
+    private int _listStory;
     private Choice _pick = null!;
     private List<SaveFiles.Entry> _all = new();
     private List<SaveFiles.Entry> _shown = new();
@@ -42,6 +44,9 @@ internal sealed class Saves : Module
     {
         _show = AddChoice("save_show", "SHOW", "THIS SLOT lists the slot you're playing (or last played), SLOT 1, SLOT 2... list one slot each, ALL SLOTS lists every slot and KEPT COPIES only the copies Oracle has kept.",
             new[] { "slot", "all", "kept" }, new[] { "THIS SLOT", "ALL SLOTS", "KEPT COPIES" }, _ => Filter()).Setting();
+        _story = AddChoice("save_story", "STORY",
+            "Every save holds the main story and any New Game + run, as the main menu's CONTINUE STORY and CONTINUE STORY+ show. This picks which one LOAD THIS SAVE resumes. CURRENT keeps the one you're playing; NEW GAME + lists only saves that have a New Game + run.",
+            new[] { "current", "main", "plus" }, new[] { "CURRENT", "MAIN STORY", "NEW GAME +" }, _ => Filter()).Setting();
         _pick = AddChoice("save_pick", "SAVE", PickHelp, new[] { "" }, new[] { "OPEN THE MENU TO LIST" }, _ => Describe()).Setting().Unsaved();
         _pick.HoldToScroll = true;
         AddCommand("save_refresh", "REFRESH LIST", "Reads the save folders again. The list also refreshes every time the menu opens.", Refresh).Setting();
@@ -49,7 +54,7 @@ internal sealed class Saves : Module
         Command load = AddCommand("save_load", "LOAD THIS SAVE",
             "Restarts from the selected save, as the pause menu restarts from a checkpoint. The save you're leaving is kept first, so nothing is lost. The game carries on saving into the save's slot.",
             Load).Setting().Confirmed();
-        load.ConfirmPrompt = () => Selected is { } e ? "LOAD " + Short(e) + "?" : "LOAD THIS SAVE?";
+        load.ConfirmPrompt = () => Selected is { } e ? "LOAD " + Short(e) + (TargetStory() == PlusStory ? " IN NEW GAME +" : "") + "?" : "LOAD THIS SAVE?";
         AddCommand("save_keep", "KEEP A COPY", "Copies the selected save into Oracle's saves folder. The game never rotates or deletes those, so it stays loadable for good.", KeepSelected).Setting();
         Command delete = AddCommand("save_delete", "DELETE KEPT COPY", "Deletes the selected save if it's one of Oracle's kept copies. The game's own files and backups are never deleted.", DeleteSelected)
             .Setting().Confirmed();
@@ -116,7 +121,35 @@ internal sealed class Saves : Module
         keys.Add("kept");
         labels.Add("KEPT COPIES");
         _show.SetOptions(keys.ToArray(), labels.ToArray());
+
+        int current = CurrentStory();
+        string now = current == PlusStory ? "CURRENT (NEW GAME +)" : current == MainStory ? "CURRENT (MAIN STORY)" : "CURRENT";
+        _story.SetOptions(_story.Keys, new[] { now, "MAIN STORY", "NEW GAME +" }, _story.Index);
     }
+
+    // RSaveGameManager.StorySlots: the main story is 0, New Game + is 2 (3 to 8 are the Arkham Episodes).
+    private const int MainStory = 0;
+    private const int PlusStory = 2;
+
+    /// <summary>The story being played, or -1 outside a game.</summary>
+    private static int CurrentStory()
+    {
+        int id = -1;
+        Safe.Run("story slot", () =>
+        {
+            if (World.InGame && World.Ri?.SaveGameManager is { IsValid: true } sgm)
+                id = (int)sgm.GetActiveStorySlotID();
+        });
+        return id;
+    }
+
+    /// <summary>The story a load resumes: the STORY pick, or the one being played.</summary>
+    private int TargetStory() => _story.CurrentKey switch
+    {
+        "main" => MainStory,
+        "plus" => PlusStory,
+        _ => CurrentStory(),
+    };
 
     private void Filter()
     {
@@ -129,10 +162,14 @@ internal sealed class Saves : Module
             _ => new List<SaveFiles.Entry>(_all),
         };
 
+        _listStory = TargetStory();
+        if (_listStory == PlusStory)
+            _shown.RemoveAll(e => !e.HasPlus);
+
         string was = _pick.CurrentKey;
         if (_shown.Count == 0)
         {
-            _pick.SetOptions(new[] { "" }, new[] { _show.CurrentKey == "kept" ? "NO KEPT COPIES YET" : "NO SAVES FOUND" });
+            _pick.SetOptions(new[] { "" }, new[] { _listStory == PlusStory ? "NO SAVES WITH NEW GAME +" : _show.CurrentKey == "kept" ? "NO KEPT COPIES YET" : "NO SAVES FOUND" });
         }
         else
         {
@@ -147,7 +184,9 @@ internal sealed class Saves : Module
     private string Label(SaveFiles.Entry e)
     {
         string text = Date(e.When) + ", SLOT " + (e.Slot + 1);
-        if (e.Percent >= 0)
+        if (_listStory == PlusStory)
+            text += ", NG+ " + (int)e.StoryPlus + "%";
+        else if (e.Percent >= 0)
             text += ", " + e.Percent + "%";
         return text + ", " + Tag(e);
     }
@@ -190,6 +229,8 @@ internal sealed class Saves : Module
             what.Add(e.Difficulty.ToUpperInvariant());
         if (e.Percent >= 0)
             what.Add(e.Percent + "% COMPLETE");
+        if (e.HasPlus)
+            what.Add("NEW GAME + " + (int)e.StoryPlus + "%");
 
         string origin = e.Kind switch
         {
@@ -303,6 +344,11 @@ internal sealed class Saves : Module
         if (Characters.I.PlayingOther || Characters.I.Busy)
             throw new InvalidOperationException("switch back to Batman first");
 
+        int story = TargetStory(), now = CurrentStory();
+        if (story == PlusStory && !e.HasPlus)
+            throw new InvalidOperationException("this save has no New Game + run");
+        RSaveGameManager sgm = World.Ri?.SaveGameManager is { IsValid: true } m ? m : throw new InvalidOperationException("the save system isn't ready");
+
         byte[] data = SaveFiles.ReadAll(e.Path);
         KeepCurrentSlot("before loading");
 
@@ -316,8 +362,18 @@ internal sealed class Saves : Module
             arr.Dispose();
         }
 
+        // Switching story is what the main menu's CONTINUE STORY / CONTINUE STORY+ do before loading
+        // (RGFxMovieUI_MainMenu.GotoContinue2 / GotoContinuePlus2): pick the story slot, then unpack the save for it.
+        // Staying in the same story keeps the plain path, which works as it is.
+        if (story >= 0 && story != now)
+        {
+            sgm.SetActiveStorySlotID((RSaveGameManager.StorySlots)story);
+            sgm.DecompressSavedGame(false);
+        }
+
         Shared.Set(SlotKey, e.Slot);
-        Log.Info("Saves: loading " + e.Path + " (" + data.Length + " bytes) as slot " + (e.Slot + 1) + " file " + (e.XId + 1) + ", saved " + e.When.ToString("u", Inv) + ".");
+        Log.Info("Saves: loading " + e.Path + " (" + data.Length + " bytes) as slot " + (e.Slot + 1) + " file " + (e.XId + 1) + ", story " + story + (story != now ? " (was " + now + ")" : "")
+            + ", saved " + e.When.ToString("u", Inv) + ".");
         Menu.Close();
         game.Game_Restart();
     }
