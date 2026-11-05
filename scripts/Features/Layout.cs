@@ -25,8 +25,10 @@ internal static class Layout
         }),
         ("PLAYER/MOVEMENT", new Section[]
         {
-            new("ON FOOT", "move_speed"),
-            new("GLIDING", "infinite_glide", "glide_climb"),
+            new("ON FOOT", "move_speed", "tunnel_speed"),
+            new("GLIDING", "glide_speed", "infinite_glide", "glide_climb"),
+            new("GRAPPLE", "grapple_speed", "grapple_boost", "line_launcher_speed"),
+            new("FALLING", "fall_gravity"),
         }),
         ("PLAYER/GADGETS", new Section[]
         {

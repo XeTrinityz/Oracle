@@ -22,7 +22,7 @@ internal sealed class GlideMod : Module
 
     public override void Build()
     {
-        AddToggle("infinite_glide", "INFINITE GLIDE", "Glide as long as you hold glide. Look up to climb, look ahead to fly level, look down to dive. Batman keeps his normal glide speed and pose.",
+        AddToggle("infinite_glide", "INFINITE GLIDE", "Glide as long as you hold glide. Look up to climb, look ahead to fly level, look down to dive. Batman keeps his glide pose and the speed GLIDE SPEED sets.",
             on => { if (!on) Restore(); }).EveryTick(GlideTick);
         _climb = AddSlider("glide_climb", "GLIDE CLIMB ANGLE", "How steeply Batman climbs when you look up during INFINITE GLIDE. Higher climbs faster.", 22f, 8f, 40f, 1f, 30f, Fmt.Degrees).Pref();
     }
