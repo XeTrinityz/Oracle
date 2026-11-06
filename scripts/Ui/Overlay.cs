@@ -146,7 +146,7 @@ internal static class Overlay
             }
             catch (Exception ex)
             {
-                Log.Throttled("hud " + m.Name, m.Name + " HUD failed: " + Log.Why(ex));
+                Log.Error("hud " + m.Name, m.Name + " HUD", ex);
             }
         }
     }

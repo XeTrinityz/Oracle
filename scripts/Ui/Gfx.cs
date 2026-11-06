@@ -205,17 +205,20 @@ internal static class Gfx
         return h;
     }
 
-    public static float Text(float x, float y, string text, Rgba col, float scale, float alpha = 1f)
+    /// <summary>
+    /// Draws text. It doesn't measure it: a width is another UnrealScript call, and readouts that change every frame
+    /// would pay it every frame. Callers that lay out after the text ask <see cref="TextW"/>.
+    /// </summary>
+    public static void Text(float x, float y, string text, Rgba col, float scale, float alpha = 1f)
     {
         C.SetDrawColor(col.R, col.G, col.B, (byte)Math.Clamp(col.A * alpha * Alpha, 0f, 255f));
         C.SetPos(MathF.Round(x), MathF.Round(y), 0f);
         float size = scale * Scale * _fontNorm;
         C.DrawText(text, false, size, size, out _);
-        return TextW(text, scale);
     }
 
     /// <summary>Draws text vertically centred on <paramref name="cy"/>.</summary>
-    public static float TextMid(float x, float cy, string text, Rgba col, float scale, float alpha = 1f) =>
+    public static void TextMid(float x, float cy, string text, Rgba col, float scale, float alpha = 1f) =>
         Text(x, cy - TextH(scale) * 0.5f, text, col, scale, alpha);
 
     public static float TextRight(float right, float cy, string text, Rgba col, float scale, float alpha = 1f)
@@ -232,7 +235,11 @@ internal static class Gfx
     {
         float start = x;
         foreach (char ch in text)
-            x += Text(x, y, ch.ToString(), col, scale, alpha) + S(spacing);
+        {
+            string letter = ch.ToString();
+            Text(x, y, letter, col, scale, alpha);
+            x += TextW(letter, scale) + S(spacing);
+        }
         return x - start - S(spacing);
     }
 

@@ -84,14 +84,34 @@ internal static class Log
         return ex.Message + " (" + ex.GetType().Name + ")";
     }
 
-    /// <summary>Logs at most once every few seconds per key, so one failing tick can't flood the log or hide another error.</summary>
-    public static void Throttled(string key, string text)
+    /// <summary>
+    /// True when this key may log again, and starts its quiet spell. Check it before building an expensive line, so a
+    /// failure repeating every tick costs nothing between the lines that are written.
+    /// </summary>
+    public static bool Due(string key)
     {
         double now = Clock.Now;
         if (_next.TryGetValue(key, out double due) && now < due)
-            return;
+            return false;
 
         _next[key] = now + ThrottleSeconds;
-        Info(text);
+        return true;
+    }
+
+    /// <summary>Logs at most once every few seconds per key, so one failing tick can't flood the log or hide another error.</summary>
+    public static void Throttled(string key, string text)
+    {
+        if (Due(key))
+            Info(text);
+    }
+
+    /// <summary>
+    /// "<paramref name="what"/> failed: ..." at most once every few seconds per key. The stack is only read for a line
+    /// that is written: reading it loads debug symbols, far too slow to repeat every tick.
+    /// </summary>
+    public static void Error(string key, string what, Exception ex)
+    {
+        if (Due(key))
+            Info(what + " failed: " + Why(ex));
     }
 }

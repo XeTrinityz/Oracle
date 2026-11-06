@@ -24,7 +24,6 @@ internal sealed class Lightning : Module
     private readonly Held<RLightningActor, bool> _noRandom = new("lightning off", a => a.bRandomFlashesDisabled, (a, v) => a.bRandomFlashesDisabled = v);
     private Slider _frequency = null!;
     private Slider _bright = null!;
-    private bool _reported;
 
     public override void Build()
     {
@@ -37,8 +36,6 @@ internal sealed class Lightning : Module
         _bright = AddSlider("lightning_brightness", "LIGHTNING BRIGHTNESS", "How brightly each flash lights the city.", 1f, 0.25f, 3f, 0.25f, 2f, Fmt.Times, _ => Apply());
         _bright.Maintain(Apply);
     }
-
-    public override void WorldChanged() => _reported = false;
 
     public override void Shutdown() => Safe.Run("lightning restore", Restore);
 
@@ -68,12 +65,6 @@ internal sealed class Lightning : Module
 
         if (Actor() is not { } a)
             return;
-
-        if (!_reported)
-        {
-            _reported = true;
-            Log.Info("Lightning: game values interval " + a.MaxTimeBetweenStrikes + " s, brightness " + a.MaxLightningBrightness + ", strength " + a.MaxLightningStrength + ".");
-        }
 
         // Only a changed frequency overrides the game's own switch, so a brightness change alone keeps a calm night calm.
         float f = _frequency.Value;

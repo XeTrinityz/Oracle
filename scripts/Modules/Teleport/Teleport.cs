@@ -65,7 +65,6 @@ internal sealed class Teleport : Module
     private const float LookAhead = 12000f;
     private const float BoundaryWait = 30f;
     private const float CaptionEvery = 0.5f;
-    private const float FlightLogEvery = 5f;
     private const float ArriveXY = 100f;
 
     private enum Phase
@@ -114,7 +113,6 @@ internal sealed class Teleport : Module
     private string? _waitCell;
     private float _waitFor;
     private float _caption;
-    private float _flightLog;
     private Vector3 _descendTo;
     private Vector3 _landed;
     private bool _checking;
@@ -172,16 +170,12 @@ internal sealed class Teleport : Module
             throw new InvalidOperationException("no waypoint is set, pick one on the map first");
 
         // The game's own default is offset space: the stored point plus the city's current offset, which is
-        // where the marker really is in the world. Both are logged when they differ, to spot a wrong guess.
+        // where the marker really is in the world.
         Vector3 world = pd.GetCustomWaypoint(true);
-        Vector3 stored = pd.GetCustomWaypoint(false);
-        if (Vector3.DistanceSquared(world, stored) > 1f)
-            Log.Info("Teleport: waypoint " + Fmt.Position(world) + " in world space, " + Fmt.Position(stored) + " as stored.");
 
         // Only a pin dropped on the map (Proximity) has a made-up height. A waypoint the game set for a mission,
         // Riddler puzzle, side story or challenge sits on the real spot, so it lands there exactly, even underground.
         bool exact = pd.CustomWaypoint_Type != RPersistentData.ECustomWayPointType.CustomWayType_Proximity;
-        Log.Info("Teleport: waypoint type " + pd.CustomWaypoint_Type + (exact ? ", landing exactly." : "."));
         Go(world, exact);
     }
 
@@ -190,11 +184,10 @@ internal sealed class Teleport : Module
         if (_history.Count == 0)
             throw new InvalidOperationException("nowhere to go back to");
 
-        Pawn mover = RequireMover();
+        RequireMover();
         Spot spot = _history[^1];
         _history.RemoveAt(_history.Count - 1);
         Go(spot.At + Offset, true, new Rotator(0, spot.Yaw, 0), true);
-        Log.Detail("Teleport: going back from " + Fmt.Position(mover.Location) + ".");
     }
 
     private void Cancel()
@@ -486,7 +479,6 @@ internal sealed class Teleport : Module
         _waitCell = null;
         _waitFor = 0f;
         _caption = 0f;
-        _flightLog = 0f;
         var travelled = new Vector3(_target.X - _origin.X, _target.Y - _origin.Y, 0f);
         _dir = travelled.LengthSquared() > 1f ? Vector3.Normalize(travelled) : Vector3.Zero;
         Log.Info("Teleport: flying " + (int)(Geo.DistXY(_origin, _target) / UnitsPerMetre) + " m from " + (_cell ?? "no district")
@@ -559,16 +551,11 @@ internal sealed class Teleport : Module
 
                 Log.Info("Teleport: " + cell + " still isn't loaded after " + Seconds(_waitFor) + ", crossing into it anyway.");
             }
-            else if (_waitCell != null)
-            {
-                Log.Info("Teleport: " + cell + " loaded after a wait of " + Seconds(_waitFor) + ".");
-            }
 
             _waitCell = null;
             _waitFor = 0f;
             _cell = cell;
             Safe.Run("district entry", () => Enter(cell));
-            Log.Info("Teleport: crossed into " + cell + ", " + (int)(left / UnitsPerMetre) + " m to go.");
         }
         else
         {
@@ -579,13 +566,6 @@ internal sealed class Teleport : Module
 
         _pos += _dir * step;
         Fly(mover, _pos, yaw);
-
-        _flightLog += dt;
-        if (_flightLog >= FlightLogEvery)
-        {
-            _flightLog = 0f;
-            Log.Info("Teleport: en route, " + (int)(Geo.DistXY(_pos, _target) / UnitsPerMetre) + " m to go, over " + (_cell ?? "no district") + ".");
-        }
     }
 
     /// <summary>Holds position at a district's edge until the game has it loaded.</summary>
@@ -619,7 +599,6 @@ internal sealed class Teleport : Module
             _descendTo = floor.At + new Vector3(0f, 0f, lift);
             _stage = Stage.Descend;
             _waitCell = null;
-            Log.Info("Teleport: above the target, descending to " + Fmt.Position(floor.At) + ".");
             return;
         }
 
@@ -706,8 +685,6 @@ internal sealed class Teleport : Module
         {
             ri.SetCurrentLevel(new FName(level), ri, false);
         }
-
-        Log.Detail("Teleport: entered " + level + (volume != null ? " through its volume." : "."));
     }
 
     private static bool IsCity(string level) => level.StartsWith("City", StringComparison.OrdinalIgnoreCase);

@@ -91,7 +91,6 @@ internal sealed class PreScarecrowEra : Module
         if (World.Info is not { } gi)
             return;
         gi.ActivateRemoteEvent(new BmSDK.FName(hide ? "Hide_Dome" : "UNHide_Dome"));
-        Log.Info("PRE-SCARECROW ERA: " + (hide ? "Hide_Dome" : "UNHide_Dome") + " fired.");
     }
 
     public override void Shutdown() => Safe.Run("era restore", Restore);
@@ -182,9 +181,6 @@ internal sealed class PreScarecrowEra : Module
                 // Never take the era's own no-rain for the game's: that's how the rain went missing before.
                 RainValues game = IsEraRain(now) ? StoryRain : now;
                 SavedRain[key] = Pack(game);
-                Log.Info(IsEraRain(now)
-                    ? $"PRE-SCARECROW ERA: rain off on {key}; it was already off, so turning the era off brings back density {game.Density:0.##}."
-                    : $"PRE-SCARECROW ERA: rain off on {key} (was density {now.Density:0.##}).");
             }
             else if (!IsEraRain(now))
             {

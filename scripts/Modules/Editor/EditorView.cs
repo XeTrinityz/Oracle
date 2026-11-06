@@ -102,7 +102,10 @@ internal static class EditorView
         float kx = x + pad;
         float ky = y + pad + th + S(4);
         foreach (string k in keys)
-            kx += Text(kx, ky, k, Theme.Mid, scale) + gap;
+        {
+            Text(kx, ky, k, Theme.Mid, scale);
+            kx += TextW(k, scale) + gap;
+        }
     }
 
     private static Rgba ColourOf(Thing t, bool removed)

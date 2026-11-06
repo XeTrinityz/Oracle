@@ -32,7 +32,6 @@ internal sealed class Wind : Module
     private Slider _strength = null!;
     private Slider _direction = null!;
     private Slider _gusts = null!;
-    private bool _reported;
 
     private bool Vanilla => _strength.IsDefault && _direction.IsDefault && _gusts.IsDefault;
 
@@ -53,7 +52,6 @@ internal sealed class Wind : Module
         _volumes.Clear();
         _sources.Clear();
         _global.Holding = false;
-        _reported = false;
     }
 
     public override void Shutdown() => Safe.Run("wind restore", Restore);
@@ -67,16 +65,7 @@ internal sealed class Wind : Module
         }
 
         if (World.Info is { } gi)
-        {
-            if (!_reported)
-            {
-                _reported = true;
-                WindConfig c = gi.CurrentWindConfig;
-                Log.Info("Wind: game config apply " + c.IsApplyWind + ", centre " + c.WindVelocityCentre + ", radius " + c.WindVelocityRadius + ", accel radius " + c.MaxWindAccelerationRadius + ".");
-            }
-
             Override(_global, ref gi.CurrentWindConfig);
-        }
 
         foreach (RWindVolume v in World.All<RWindVolume>())
         {

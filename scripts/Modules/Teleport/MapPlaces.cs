@@ -57,7 +57,6 @@ internal static class MapPlaces
             Dictionary<string, string> frontend = Names(Path.Combine(localization, "FRONTEND.int"), FrontendSection);
             Dictionary<string, string> interfaceText = Names(Path.Combine(localization, "GFxUI.int"), null);
             Read(File.ReadAllText(Path.Combine(game, "Config", "BmGame.ini")), frontend, interfaceText);
-            Log.Info("Teleport: map places: " + string.Join(", ", Groups.Select(g => g.Label + " " + g.Items.Count)) + ".");
         }
         catch (Exception ex)
         {

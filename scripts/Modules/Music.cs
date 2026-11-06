@@ -249,18 +249,14 @@ internal sealed class Music : Module
         return (dot >= 0 ? path[(dot + 1)..] : path).Replace('_', ' ').ToUpperInvariant();
     }
 
+    // Both look the key up by path with the engine's own object lookup. Walking the ~16,000 loaded events for it
+    // stalled the start and end of every teleport fade that plays a sound.
     private static AkEvent? FindSound(string path)
     {
         if (path.Length == 0 || path == NoSound || path.StartsWith(StatePrefix, StringComparison.Ordinal))
             return null;
 
-        foreach (AkEvent e in World.All<AkEvent>())
-        {
-            if (e.IsValid && e.GetPathName(null!).Equals(path, StringComparison.OrdinalIgnoreCase))
-                return e;
-        }
-
-        return null;
+        return Game.FindObject<AkEvent>(path) is { IsValid: true } e ? e : null;
     }
 
     private static AkStateName? FindState(string key)
@@ -269,13 +265,7 @@ internal sealed class Music : Module
             return null;
 
         string path = key[StatePrefix.Length..];
-        foreach (AkStateName s in World.All<AkStateName>())
-        {
-            if (s.IsValid && s.GetPathName(null!).Equals(path, StringComparison.OrdinalIgnoreCase))
-                return s;
-        }
-
-        return null;
+        return Game.FindObject<AkStateName>(path) is { IsValid: true } s ? s : null;
     }
 
     /// <summary>A music state shows by its own name, a mix state as GROUP / STATE, an event by its name.</summary>

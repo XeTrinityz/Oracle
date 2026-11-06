@@ -11,7 +11,7 @@ internal static class Safe
         }
         catch (Exception ex)
         {
-            Log.Throttled(what, what + " failed: " + Log.Why(ex));
+            Log.Error(what, what, ex);
         }
     }
 
@@ -23,7 +23,7 @@ internal static class Safe
         }
         catch (Exception ex)
         {
-            Log.Throttled(what, what + " failed: " + Log.Why(ex));
+            Log.Error(what, what, ex);
             return fallback;
         }
     }

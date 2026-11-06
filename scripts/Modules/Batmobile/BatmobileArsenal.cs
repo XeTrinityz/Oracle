@@ -67,7 +67,6 @@ internal sealed partial class Batmobile
         car.AddBatmobileWeapons(true);
         FindWeapons(car);
         int added = _weapons.Count - before;
-        Log.Info("ARM EVERY WEAPON: the Batmobile had " + before + " weapons and now has " + _weapons.Count + ".");
         if (added <= 0)
             throw new InvalidOperationException("the Batmobile already has every weapon");
 

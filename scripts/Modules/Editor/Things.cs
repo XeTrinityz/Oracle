@@ -104,7 +104,8 @@ internal static class Things
             }
             catch (Exception ex)
             {
-                Log.Throttled("editor scan", "Editor: skipped " + (a.IsValid ? a.Name.ToString() : "a dead object") + ": " + Log.Why(ex));
+                if (Log.Due("editor scan"))
+                    Log.Info("Editor: skipped " + (a.IsValid ? a.Name.ToString() : "a dead object") + ": " + Log.Why(ex));
             }
         }
 

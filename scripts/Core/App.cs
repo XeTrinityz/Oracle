@@ -133,7 +133,7 @@ internal static class App
             }
             catch (Exception ex)
             {
-                Log.Throttled("frame " + m.Name, m.Name + " frame failed: " + Log.Why(ex));
+                Log.Error("frame " + m.Name, m.Name + " frame", ex);
             }
         }
 
@@ -153,7 +153,7 @@ internal static class App
             }
             catch (Exception ex)
             {
-                Log.Throttled("tick " + m.Name, m.Name + " tick failed: " + Log.Why(ex));
+                Log.Error("tick " + m.Name, m.Name + " tick", ex);
             }
         }
     }

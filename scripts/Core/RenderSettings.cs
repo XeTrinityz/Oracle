@@ -128,14 +128,8 @@ internal static class RenderSettings
         bool ok = reply.Contains(" set to ", StringComparison.OrdinalIgnoreCase);
         if (!ok)
             Log.Info("render setting " + name + " = " + value + " was refused: " + (reply.Trim().Length > 0 ? reply.Trim() : "no reply"));
-        else if (!_lastSent.TryGetValue(name, out string? last) || last != value)
-            Log.Info("render setting: " + reply.Trim());
-
-        _lastSent[name] = ok ? value : "";
         return ok;
     }
-
-    private static readonly Dictionary<string, string> _lastSent = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The live value from the engine's settings dump, or the saved one from the ini.</summary>
     private static string? Current(string name)
@@ -146,10 +140,7 @@ internal static class RenderSettings
         if (live.Success)
             return live.Groups[1].Value;
 
-        string? saved = IniValue(name);
-        if (saved != null)
-            Log.Info("render setting " + name + ": read from the ini (the settings dump didn't list it)");
-        return saved;
+        return IniValue(name);
     }
 
     private static string? IniValue(string name) => IniFile.Get(IniPath, "SystemSettings", name);

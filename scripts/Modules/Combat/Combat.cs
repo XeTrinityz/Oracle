@@ -50,7 +50,6 @@ internal sealed partial class Combat : Module
 
     /// <summary>Attack moves already answered, so one charge isn't vaulted twice. Moves are reused, so entries expire.</summary>
     private readonly Dictionary<nint, double> _answered = new();
-    private readonly HashSet<string> _reported = new();
 
     public override void Build()
     {
@@ -126,12 +125,6 @@ internal sealed partial class Combat : Module
         }
 
         return _watch;
-    }
-
-    private void Report(string key, string text)
-    {
-        if (_reported.Add(key))
-            Log.Info(text);
     }
 
     private bool Answered(nint move)
@@ -217,7 +210,6 @@ internal sealed partial class Combat : Module
                 seen.Countered = true;
                 if (seen.Held)
                     HeldCounterLanded();
-                Report("counter " + kind + " " + result, "Auto counter: " + result + " against " + kind + " (" + move.Class.Name + ").");
             }
 
             // One try per tick. TryCounter itself picks up simultaneous attackers.
@@ -358,7 +350,6 @@ internal sealed partial class Combat : Module
     // the combo twice, because the vault started while the batarang still had the window shut.
     private const float BatarangMin = 800f;
     private const float BatarangMax = 2000f;
-    private const int MaxTraces = 120;
     // Short: the brain waits for each gadget to land (its learned time) before the next move anyway; a 1.5 s gap here
     // left Batman idle after gadgets.
     private const double GadgetGap = 0.5;
@@ -368,10 +359,6 @@ internal sealed partial class Combat : Module
     private const double ElectroTakedownGap = 3.0;
     private const double LastResort = 0.35;
 
-    private const double IdleReport = 3.0;
-    private double _lastMoveAt;
-    private double _idleReportedAt;
-    private Every _profileGap;
     private nint _waitMove;
     private double _waitMoveAt;
     private const float BeatdownReach = 450f;
@@ -408,7 +395,6 @@ internal sealed partial class Combat : Module
 
     private int _hitsThisFight;
     private readonly Dictionary<string, int> _hitsBy = new();
-    private int _traces;
 
     // Quick gadgets are listed with the brain (GadgetMoves). No quick explosive gel: it only sprays until detonated, so it
     // never lands in combo terms, and three logged combo breaks came straight after it.
@@ -437,7 +423,6 @@ internal sealed partial class Combat : Module
         }
 
         ForceTakedown();
-        Watchdog(pc, me);
         _maxCombo = Math.Max(_maxCombo, pc.ComboSize);
         _maxVariation = Math.Max(_maxVariation, pc.MaxComboVariation);
 
@@ -453,10 +438,7 @@ internal sealed partial class Combat : Module
             nint before = MovePtr(me);
             pc.UpgradeQuickGadgetToSuperGadget();
             if (MovePtr(me) != before)
-            {
                 Used("gadget takedown");
-                Trace("gadget takedown.");
-            }
         }
 
         // A cape stun Oracle started: release it at once for the quick stun (the button-release handler reaches the
@@ -466,14 +448,8 @@ internal sealed partial class Combat : Module
         if (_beatdownTarget is { } bdt)
         {
             bool live = GameNow - _beatdownAt < 1.5 && bdt.IsValid && !bdt.bDeleteMe && !bdt.bGoodAsDead && bdt.Health > 0;
-            if (!live)
+            if (!live || me.CombatMove is RCombatMove_BatmanBeatdown)
             {
-                Trace("beatdown attempt on " + Describe(bdt) + " ended without a beatdown.");
-                _beatdownTarget = null;
-            }
-            else if (me.CombatMove is RCombatMove_BatmanBeatdown)
-            {
-                Trace("beatdown on " + Describe(bdt) + ".");
                 _beatdownTarget = null;
             }
             else if (pc.CanContinueCombo())
@@ -503,15 +479,6 @@ internal sealed partial class Combat : Module
         // are part of its sums (waiting then costs the whole combo), so no separate last-moment rule is needed.
         if (!_strikeGap.Elapsed(StrikeGap) || !ComboOpen(pc, me))
             return;
-
-        if (_profileGap.Elapsed(1.0))
-        {
-            foreach (RPawnVillain v in Watch(me))
-            {
-                if (v.IsValid && !v.bDeleteMe && !v.bGoodAsDead)
-                    Profile(me, v);
-            }
-        }
 
         Think(pc, me);
     }
@@ -547,7 +514,6 @@ internal sealed partial class Combat : Module
             if (GameNow - _waitMoveAt < MoveWait)
                 return false;
 
-            Trace("stuck " + MoveWait + " s in " + move.Class.Name + " waiting for the combo; going on.");
             _waitMoveAt = GameNow;
             return true;
         }
@@ -590,12 +556,8 @@ internal sealed partial class Combat : Module
             if (FireGadget(pc, me, 0, v))
             {
                 Used("batarang");
-                Trace("batarang at a charging " + Describe(v) + ".");
                 return true;
             }
-
-            Trace("couldn't batarang a charging " + Describe(v) + ": batarang "
-                  + (Gadget(me, 0) is { IsValid: true } g ? "not ready to quick-fire (CanQuickFire " + g.CanQuickFire() + ")" : "not owned") + ".");
         }
 
         if (_bataranged.Count > 32)
@@ -717,10 +679,7 @@ internal sealed partial class Combat : Module
             return false;
 
         string last = me.LastAttackMoveClassName.ToString() ?? "";
-        bool same = last.Length > 0 && string.Equals(last, cc.Name.ToString(), StringComparison.OrdinalIgnoreCase);
-        if (same)
-            I.Report("double gadget " + cc.Name, "Auto fight: not throwing a gadget whose combo move (" + cc.Name + ") was Batman's last attack: the game would clear the combo.");
-        return same;
+        return last.Length > 0 && string.Equals(last, cc.Name.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -789,7 +748,6 @@ internal sealed partial class Combat : Module
     private void Fail(RPawnVillain v, string why)
     {
         _specialFailed[v.Ptr] = GameNow;
-        Trace("passing over " + Describe(v) + " for now: " + why + ".");
     }
 
     // ---- ALWAYS TAKEDOWN READY, held on during an AUTO FIGHT fight
@@ -801,11 +759,7 @@ internal sealed partial class Combat : Module
 
         if (!d.Debug_Combat_CanAlwaysTakedown)
             d.Debug_Combat_CanAlwaysTakedown = true;
-        if (!_forcedTakedown)
-        {
-            _forcedTakedown = true;
-            Report("forced takedown", "Auto fight: ALWAYS TAKEDOWN READY is held on during fights, for the specials on tough enemies.");
-        }
+        _forcedTakedown = true;
     }
 
     /// <summary>Gives ALWAYS TAKEDOWN READY back to its own row once AUTO FIGHT stops holding it.</summary>
@@ -824,7 +778,6 @@ internal sealed partial class Combat : Module
         ReleaseTakedown();
         if (_pending != null || _tally.Count > 0 || _model is { Dirty: true })
             BrainSummary();
-        _lastMoveAt = 0;
         _specialFailed.Clear();
         _moveReadyAt.Clear();
         _bataranged.Clear();
@@ -844,17 +797,6 @@ internal sealed partial class Combat : Module
         _breaks.Clear();
         _maxCombo = 0;
         _maxVariation = 0;
-        _traces = 0;
-    }
-
-    /// <summary>A step worth seeing in a fight log (specials, batarangs, why an enemy was passed over). Capped per fight.</summary>
-    private void Trace(string text)
-    {
-        if (_traces >= MaxTraces)
-            return;
-
-        _traces++;
-        Log.Info("Auto fight: " + text);
     }
 
     private static string Describe(RPawnVillain v)
@@ -864,48 +806,10 @@ internal sealed partial class Combat : Module
         return v.Class.Name + state + weapon;
     }
 
-    /// <summary>Logs once what each kind of enemy looks like to the fight logic, so a log shows why it was handled as it was.</summary>
-    private void Profile(RPawnPlayerCombat me, RPawnVillain v)
-    {
-        string state = v is RPawnVillainMultiStageBase ms ? " " + ms.ThugState : "";
-        string weapon = v.CurrWeapon is { IsValid: true } w ? w.Class.Name + " (" + w.WeaponDestroyType + (w.bCanBlockHoldingWeapon ? ", blocks" : "") + ")" : "none";
-        string key = "profile " + v.Class.Name + state + weapon + (v.ChargedUpBy is { IsValid: true } ? " electrified" : "");
-        if (_reported.Contains(key))
-            return;
-
-        Report(key, "Auto fight: enemy " + v.Class.Name + state + ": type " + v.CombatPawnType + ", armoured " + v.bArmoured
-                    + ", weapon " + weapon + ", blocks strikes " + v.CanBlockAttack(me, RDmgType_Strike.StaticClass())
-                    + ", electrified " + (v.ChargedUpBy is { IsValid: true }) + ", can be taken down " + v.bCanBeTakenDown
-                    + ", beatdown " + v.bCanBeatdown + ", ready " + v.ReadyForCombat()
-                    + ", gets a special " + NeedsSpecial(me, v) + ".");
-    }
-
     private static nint MovePtr(RPawnPlayerCombat me) => me.CombatMove is { IsValid: true } m ? m.Ptr : 0;
 
-    /// <summary>
-    /// If AUTO FIGHT hasn't made a move for IdleReport seconds mid-fight, logs every gate that could be holding it, so a
-    /// freeze in a log names its cause.
-    /// </summary>
-    private void Watchdog(RPlayerControllerCombat pc, RPawnPlayerCombat me)
-    {
-        double now = GameNow;
-        if (_lastMoveAt == 0)
-            _lastMoveAt = now;
-        if (now - _lastMoveAt < IdleReport || now - _idleReportedAt < IdleReport)
-            return;
-
-        _idleReportedAt = now;
-        Trace("idle " + (now - _lastMoveAt).ToString("0.0") + " s: combo " + pc.ComboSize + ", can continue " + pc.CanContinueCombo()
-              + ", Batman in " + (me.CombatMove is { IsValid: true } m ? m.Class.Name : "nothing")
-              + ", can start special " + CanStartSpecial(pc, me) + ", " + FoeCounts(pc, me) + ". Last thought: " + _thought + ".");
-    }
-
-    private void Used(string move)
-    {
-        _lastMoveAt = GameNow;
-        _usedThisFight.Add(move);
-        Report("fight " + move, "Auto fight: " + move + ".");
-    }
+    /// <summary>Counts a kind of move for the end-of-fight summary.</summary>
+    private void Used(string move) => _usedThisFight.Add(move);
 
     // ---- AUTO DODGE RED ATTACKS
 
@@ -967,7 +871,7 @@ internal sealed partial class Combat : Module
             {
                 // Its vault window just opened (TryRedirect asks CanRedirect): that is when this attack needs answering.
                 LearnRedLead(m);
-                Done(m.Ptr, "red vault " + m.Class.Name, "Auto dodge: vaulted a red " + m.Class.Name + ".");
+                Done(m.Ptr);
             }
         }
     }
@@ -991,7 +895,7 @@ internal sealed partial class Combat : Module
 
             if (me.TryRedirect(v))
             {
-                Done(key, "vault", "Auto dodge: vaulted a red " + m.Class.Name + ".");
+                Done(key);
                 continue;
             }
 
@@ -999,7 +903,7 @@ internal sealed partial class Combat : Module
             if (now - opened >= EvadeAfter)
             {
                 me.SpawnEvade(Away(me, v));
-                Done(key, "evade", "Auto dodge: evaded a red " + m.Class.Name + " (vault refused).");
+                Done(key);
             }
         }
     }
@@ -1030,7 +934,7 @@ internal sealed partial class Combat : Module
                 && me.CombatMove is RCombatMove_BatmanComboTakedown or RCombatMove_BatmanWeaponDestroy)
             {
                 c.StopCharge(false);
-                Done(c.Ptr, "charge stop", "Auto dodge: stopped a charging " + v.Class.Name + " rather than cut a takedown short.");
+                Done(c.Ptr);
             }
             else if (me.TryRedirect(v))
             {
@@ -1038,22 +942,21 @@ internal sealed partial class Combat : Module
                 // it every charge looked about to land 0.8 s in, and Batman waited on chargers until his combo ran out.
                 if (_seen.TryGetValue(c.Ptr, out Seen? cs) && GameNow - cs.At < 0.5)
                     LearnLead(cs, c.Class.Name);
-                Done(c.Ptr, "charge vault", "Auto dodge: vaulted a charging " + v.Class.Name + ".");
+                Done(c.Ptr);
             }
             else if (dist <= ChargeStop)
             {
                 c.StopCharge(false);
-                Done(c.Ptr, "charge stop", "Auto dodge: stopped a charging " + v.Class.Name + " (vault refused).");
+                Done(c.Ptr);
             }
         }
     }
 
-    private void Done(nint move, string kind, string text)
+    private void Done(nint move)
     {
         BrainDefended(_seen.TryGetValue(move, out Seen? by) ? by.Foe : null);
         _answered[move] = GameNow;
         _redOpen.Remove(move);
-        Report(kind, text);
 
         if (_answered.Count > 64)
         {
@@ -1079,10 +982,7 @@ internal sealed partial class Combat : Module
     {
         if ((I.AutoCounter is { On: true } || I.AutoFight is { On: true })
             && Safe.Try("knife counter", () => self.Target is { IsValid: true } t && t.Ptr == World.PawnPtr))
-        {
-            I.Report("knife hold", "Auto counter: holding the counter through a knife combo.");
             return true;
-        }
 
         return self.PlayerIsCounteringProperly();
     }
@@ -1107,7 +1007,6 @@ internal sealed partial class Combat : Module
             return;
 
         m.NumCounterReleases = m.NumCombatAnimHits;
-        Report("knife finish", "Auto counter: finishing knife combos with the extreme success counter (takedown on brutes).");
     }
 
     // CanCounterStop: an attack's counter window shutting. Measured on attacks Batman didn't counter (they opened while he
@@ -1155,11 +1054,7 @@ internal sealed partial class Combat : Module
             return false;
 
         string why = reason.ToString() ?? "";
-        if (BankingReasons.Contains(why) || !pc.IsInCombat(false))
-            return false;
-
-        Log.Throttled("combo lock " + why, "Combo kept at " + pc.ComboSize + " (game wanted to reset it: " + why + ").");
-        return true;
+        return !BankingReasons.Contains(why) && pc.IsInCombat(false);
     }
 
     /// <summary>
@@ -1232,7 +1127,6 @@ internal sealed partial class Combat : Module
         if (pc.ComboSize > pc.MaxComboSize)
             pc.MaxComboSize = pc.ComboSize;
         pc.UpdateComboOnHUD();
-        Report("combo multi", "Combo multiplier: a +" + gain + " hit added " + gain * (extra + 1) + ".");
     }
 
     [Redirect(typeof(RPlayerControllerCombat), nameof(RPlayerControllerCombat.IncCombo))]
@@ -1261,10 +1155,7 @@ internal sealed partial class Combat : Module
     private static void GunTickShootingRedirect(RPawnVillain self, bool bForceMiss, AlertInstance.VisibilityCategory amountVisible, bool bCanFire)
     {
         if (!bForceMiss && I.GunMiss is { On: true } && Safe.Try("gun miss", () => ShootsPlayer(self)))
-        {
             bForceMiss = true;
-            I.Report("gun miss", "Auto dodge gunfire: forcing a gunman's shots at you to miss.");
-        }
 
         self.GunTick_Shooting(bForceMiss, amountVisible, bCanFire);
     }

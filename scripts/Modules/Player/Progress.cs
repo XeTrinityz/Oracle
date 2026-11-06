@@ -30,7 +30,6 @@ internal sealed class Progress : Module
             throw new InvalidOperationException("a save is already in progress");
 
         World.RequireCheats().AutoSaveGame();
-        Log.Info("Asked the game to autosave.");
     }
 
     // RCheatManager.UnlockAllAchievements loops ids 0..130 through RPlayerController.UnlockAchievement, which skips
@@ -117,7 +116,6 @@ internal sealed class NewGamePlus : Module
     private const float MenuSettle = 1.5f;
 
     private Toggle _setting = null!;
-    private bool _askLogged;
     private float _menuSeen;
     private Every _menuLook;
 
@@ -219,8 +217,6 @@ internal sealed class NewGamePlus : Module
             Shared.Set(BootKey, _setting.On);
     }
 
-    public override void WorldChanged() => _askLogged = false;
-
     private void AddButton(RGFxMovieUI self)
     {
         if (ThisSession && self is RGFxMovieUI_MainMenu && self.IsNewGamePlusStarted())
@@ -232,14 +228,7 @@ internal sealed class NewGamePlus : Module
 
     private bool ForceIcons(RBMCombatManager self, bool shown)
     {
-        bool forced = !shown && Combat.I.CounterIcons.On && self.DisableCounterIconSequenceAction is not { IsValid: true };
-        if (!_askLogged)
-        {
-            _askLogged = true;
-            Log.Detail("Counter icons: game says " + (shown ? "show" : "hide") + (forced ? ", Oracle shows them anyway." : "."));
-        }
-
-        return forced;
+        return !shown && Combat.I.CounterIcons.On && self.DisableCounterIconSequenceAction is not { IsValid: true };
     }
 
     [Redirect(typeof(RGFxMovieUI), nameof(RGFxMovieUI.IsNewGamePlusUnlocked))]

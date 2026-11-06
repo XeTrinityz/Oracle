@@ -55,10 +55,25 @@ internal static class World
 
     public static bool InFrontend => _frontend;
 
-    public static bool Paused => Safe.Try("pause check", () => Pc is { } pc && pc.IsPaused());
+    /// <summary>
+    /// Whether the game is paused, asked once per tick or frame: IsPaused runs UnrealScript, and the overlay, pad,
+    /// radial and music all want it every frame.
+    /// </summary>
+    public static bool Paused
+    {
+        get
+        {
+            if (_paused == 0)
+                _paused = Safe.Try("pause check", () => Pc is { } pc && pc.IsPaused()) ? 2 : 1;
+            return _paused == 2;
+        }
+    }
+
+    private static int _paused; // 0 not asked since the last refresh, 1 running, 2 paused
 
     public static void Refresh()
     {
+        _paused = 0;
         if (Pc == null || Info == null || _refind.Elapsed(RefindSeconds))
             Refind();
 
@@ -83,6 +98,7 @@ internal static class World
         _pc = null;
         _info = null;
         _checkedPawn = 0;
+        _paused = 0;
         _refind.Force();
         InGame = false;
     }

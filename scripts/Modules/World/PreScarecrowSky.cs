@@ -70,8 +70,6 @@ internal sealed class PreScarecrowSky : Module
                 a.Destroy();
         }
 
-        if (_spawned.Count > 0)
-            Log.Info("PRE-SCARECROW ERA sky: removed " + _spawned.Count + " sky pieces.");
         _spawned.Clear();
     }
 
@@ -96,12 +94,21 @@ internal sealed class PreScarecrowSky : Module
         StaticMeshComponent? sunSource = null;
         foreach (StaticMeshComponent c in Game.FindObjects<StaticMeshComponent>())
         {
-            if (!c.IsValid || c.IsClassDefaultObject || !c.GetPathName(null).StartsWith(Package + ".", StringComparison.OrdinalIgnoreCase))
+            if (!c.IsValid || c.IsClassDefaultObject)
                 continue;
 
-            if (c.StaticMesh is { IsValid: true } m && m.Ptr == dome.Ptr)
+            // The cheap reads rule out nearly every component in the city before its path (an UnrealScript call) is asked.
+            bool isDome = c.StaticMesh is { IsValid: true } m && m.Ptr == dome.Ptr;
+            if (!isDome && c.Outer is not StaticMeshCollectionActor)
+                continue;
+
+            string path = c.GetPathName(null);
+            if (!path.StartsWith(Package + ".", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (isDome)
                 domeSource = c;
-            else if (c.Outer is StaticMeshCollectionActor && c.GetPathName(null).Contains(SunCollection, StringComparison.OrdinalIgnoreCase))
+            else if (path.Contains(SunCollection, StringComparison.OrdinalIgnoreCase))
                 sunSource = c; // the sun sphere; its material override isn't readable until attached, so match by place
         }
 
@@ -111,11 +118,9 @@ internal sealed class PreScarecrowSky : Module
             return;
         }
 
-        Describe("dome", domeSource);
         Copy("dome", domeSource);
         if (sunSource != null)
         {
-            Describe("sun", sunSource);
             Copy("sun", sunSource);
 
             // The sphere's own material is a fog shader; the chapter overrides it with sun_M (read offline).
@@ -157,7 +162,6 @@ internal sealed class PreScarecrowSky : Module
         flare.SetDrawScale(src.DrawScale);
         flare.SetDrawScale3D(src.DrawScale3D);
         _spawned.Add(flare);
-        Log.Info($"PRE-SCARECROW ERA sky: placed the sun flare {template.GetPathName(null)} at {src.Location}.");
     }
 
     private void Fail(string why)
@@ -165,16 +169,6 @@ internal sealed class PreScarecrowSky : Module
         _failed = true;
         Log.Info("PRE-SCARECROW ERA sky: " + why + ".");
         Overlay.Notice("PRE-SCARECROW ERA", why.ToUpperInvariant(), false);
-    }
-
-    private static void Describe(string what, StaticMeshComponent c)
-    {
-        Actor owner = c.Owner;
-        string ownerText = owner is { IsValid: true }
-            ? $"{owner.GetPathName(null)} at {owner.Location} rot ({owner.Rotation.Pitch:0.##},{owner.Rotation.Yaw:0.##},{owner.Rotation.Roll:0.##}) drawscale {owner.DrawScale:0.###} x {owner.DrawScale3D}"
-            : "none";
-        Log.Info($"PRE-SCARECROW ERA sky {what}: {c.GetPathName(null)} mesh {c.StaticMesh?.GetPathName(null)} hidden {c.HiddenGame}; owner {ownerText}; " +
-                 $"component translation {c.Translation} scale {c.Scale:0.###} x {c.Scale3D}; parent-to-world origin {Origin(c.CachedParentToWorld)}; radius {c.Bounds.SphereRadius:0}.");
     }
 
     // A level's own components carry their placement either through their actor, or (in a StaticMeshCollectionActor)
@@ -224,36 +218,5 @@ internal sealed class PreScarecrowSky : Module
         }
 
         _spawned.Add(actor);
-        Log.Info($"PRE-SCARECROW ERA sky: placed the {what} at {location} rot ({rotation.Pitch:0.##},{rotation.Yaw:0.##},{rotation.Roll:0.##}) scale {scale} with {count} materials.");
-    }
-
-    // FMatrix is 16 floats in rows, the same layout as Matrix4x4; BmSDK's FPlane only exposes W.
-    private static Matrix4x4 Raw(GameObject.FMatrix m) => System.Runtime.CompilerServices.Unsafe.As<GameObject.FMatrix, Matrix4x4>(ref m);
-
-    private static Vector3 Origin(GameObject.FMatrix fm)
-    {
-        Matrix4x4 m = Raw(fm);
-        return new Vector3(m.M41, m.M42, m.M43);
-    }
-
-    // Unreal's matrix rows are the scaled X, Y and Z axes, then the translation.
-    private static (Vector3, Rotator, Vector3) Decompose(GameObject.FMatrix fm)
-    {
-        Matrix4x4 m = Raw(fm);
-        var x = new Vector3(m.M11, m.M12, m.M13);
-        var y = new Vector3(m.M21, m.M22, m.M23);
-        var z = new Vector3(m.M31, m.M32, m.M33);
-        var scale = new Vector3(x.Length(), y.Length(), z.Length());
-        x = Vector3.Normalize(x);
-        y = Vector3.Normalize(y);
-        z = Vector3.Normalize(z);
-
-        float pitch = MathF.Atan2(x.Z, MathF.Sqrt(x.X * x.X + x.Y * x.Y));
-        float yaw = MathF.Atan2(x.Y, x.X);
-        var flatY = new Vector3(-MathF.Sin(yaw), MathF.Cos(yaw), 0f);
-        float roll = MathF.Atan2(Vector3.Dot(z, flatY), Vector3.Dot(y, flatY));
-
-        const float deg = 180f / MathF.PI;
-        return (Origin(fm), new Rotator { Pitch = pitch * deg, Yaw = yaw * deg, Roll = roll * deg }, scale);
     }
 }

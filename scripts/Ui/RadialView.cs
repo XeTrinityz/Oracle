@@ -650,7 +650,8 @@ internal static class RadialView
         foreach ((string key, string label) in _hints)
         {
             hx += Chip(hx, mid, key, Theme.Hi, 0.1f) + S(6f);
-            hx += TextMid(hx, mid, label, Theme.Mid, HintScale) + space;
+            TextMid(hx, mid, label, Theme.Mid, HintScale);
+            hx += TextW(label, HintScale) + space;
         }
     }
 

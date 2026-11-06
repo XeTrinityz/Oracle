@@ -413,7 +413,6 @@ internal sealed partial class Combat
             Brain.Window[cls] = w = new Stat();
         w.Add(length);
         Brain.Dirty = true;
-        Report("window " + cls, "Auto fight: measured a " + cls + " counter window of " + length.ToString("0.00") + " s.");
     }
 
     // ---- learning from attacks (called from the defence code)
@@ -904,16 +903,6 @@ internal sealed partial class Combat
     private static bool CanHold(RCombatMove_VillainAttack a) =>
         !IsRed(a) && a is not RCombatMove_VillainMultiAttackAndCounter && a is not RCombatMove_VillainChargeAttack;
 
-    /// <summary>For the idle report: enemies up, down (and how), within reach.</summary>
-    private string FoeCounts(RPlayerControllerCombat pc, RPawnPlayerCombat me)
-    {
-        List<Foe> foes = Perceive(pc, me);
-        int up = foes.Count(f => !f.Down), floor = foes.Count(f => f.Downed), rag = foes.Count(f => f.Ragdoll);
-        int notReady = foes.Count(f => !f.V.ReadyForCombat());
-        string nearest = foes.Where(f => f.Down).OrderBy(f => f.Dist).FirstOrDefault() is { } d ? ", nearest down " + d.Dist.ToString("0") + " away" : "";
-        return up + " enemies up, " + (foes.Count - up) + " down (" + floor + " on the floor, " + rag + " ragdolled, " + notReady + " not ready" + nearest + ")";
-    }
-
     private static int VariationKinds(RPlayerControllerCombat pc)
     {
         int n = 0, max = Math.Min(pc.MoveTypeCount.Count, (int)CMT.ECMT_Max);
@@ -1254,7 +1243,6 @@ internal sealed partial class Combat
     }
 
     /// <summary>Counts fights, so once-per-fight log lines can be keyed by fight.</summary>
-    private int _fightNumber;
 
     /// <summary>When each kind of move was last made, and when each enemy last had a gadget thrown at them.</summary>
     private readonly Dictionary<string, double> _movedAt = new();
@@ -1421,8 +1409,6 @@ internal sealed partial class Combat
         {
             // Refused: nothing started, nothing at risk. Rest it briefly so the next best gets a turn.
             Cool(o.Spec.Name + " refused", 0.4);
-            if (urgentLeft >= 0 && _reported.Add("urgent refused " + o.Spec.Name + " " + _fightNumber))
-                Trace("the game refused " + o.Describe() + " with " + urgentLeft.ToString("0.00") + " s of combo window left.");
             _thought = "the game refused " + o.Describe();
             return;
         }
@@ -1443,9 +1429,6 @@ internal sealed partial class Combat
         TallyOf(o.Spec.Name).Tries++;
         Used(o.Spec.Name);
         _thought = "made " + o.Describe();
-        if (o.Spec != MStrike || urgentLeft >= 0)
-            Trace(o.Describe() + ", stake " + stake.ToString("0")
-                  + (urgentLeft >= 0 ? ", with " + urgentLeft.ToString("0.00") + " s of combo window left" : "") + ".");
     }
 
     /// <summary>The pending move's outcome. Landed teaches its timing; failures teach how often it works.</summary>
@@ -1628,7 +1611,6 @@ internal sealed partial class Combat
         {
             s.Held = true;
             _heldCounters++;
-            Report("counter hold", "Auto fight: holding a counter for Batman's own move to land first (up to " + HoldBudget.ToString("0.00") + " s).");
         }
 
         return true;
@@ -1725,7 +1707,6 @@ internal sealed partial class Combat
     /// <summary>End of fight: what each move did, what the model now believes, and the model saved.</summary>
     private void BrainSummary()
     {
-        _fightNumber++;
         ResolvePending(false, "fight ended");
         SettleReactions();
         foreach ((Option o, double _) in _awaitHit)

@@ -339,7 +339,8 @@ internal sealed class Riddler : Module
     {
         "Blackfire", "firefly", "penguin", "Pyg", "Riddler", "TwoFace", "Azrael", "ManBat", "FireCrew", "Deathstroke",
     };
-    private const string CellSwitch = CellSequence + "RSeqAct_SwitchFlags_0";
+    private const string CellSwitchName = "RSeqAct_SwitchFlags_0";
+    private const string CellSwitch = CellSequence + CellSwitchName;
     private const float CellCheckSeconds = 2f;
     private const float CellFindSeconds = 10f;
     private const float CellWindowSeconds = 120f;
@@ -363,7 +364,8 @@ internal sealed class Riddler : Module
         if (!_cellFind.Elapsed(CellFindSeconds))
             return false;
 
-        _cellSwitch = World.All<RSeqAct_SwitchFlags>().FirstOrDefault(s => s.GetPathName(null) == CellSwitch);
+        // The object's own name first: it's read from memory, where a full path is an UnrealScript call per switch.
+        _cellSwitch = World.All<RSeqAct_SwitchFlags>().FirstOrDefault(s => s.Name.ToString() == CellSwitchName && s.GetPathName(null) == CellSwitch);
         if (_cellSwitch == null)
             return false;
 

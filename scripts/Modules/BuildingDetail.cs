@@ -31,7 +31,6 @@ internal sealed class BuildingDetail : Module
     private static bool _dirty;
     private static double _changedAt;
     private static double _nextScan;
-    private static int _scans;
 
     public override void Build()
     {
@@ -77,28 +76,15 @@ internal sealed class BuildingDetail : Module
     private static void Scan()
     {
         var watch = Stopwatch.StartNew();
-        int seen = 0, withLod = 0, parents = 0, replaced = 0, changed = 0;
-        var distances = new List<float>();
 
         foreach (PrimitiveComponent p in Game.FindObjects<PrimitiveComponent>())
         {
             if (!p.IsValid || p.IsClassDefaultObject)
                 continue;
 
-            seen++;
             float d = p.MassiveLODDistance;
             if (d <= 0f)
                 continue;
-
-            withLod++;
-            if (_scans == 0)
-            {
-                distances.Add(d);
-                if (p.MassiveLODAttachedPrimitives > 0)
-                    parents++;
-                if (p.ReplacementPrimitive is { IsValid: true })
-                    replaced++;
-            }
 
             // A pointer seen before but holding a value Oracle didn't set is a new object (or the game changed it).
             if (!Held.TryGetValue(p.Ptr, out Entry? e) || MathF.Abs(d - e.Current) > 0.5f)
@@ -115,25 +101,12 @@ internal sealed class BuildingDetail : Module
             e.Current = want;
             if (p.bAttached)
                 p.ForceUpdate(false);
-            changed++;
         }
 
         if (_scale <= 0f)
             Held.Clear();
 
-        double ms = watch.Elapsed.TotalMilliseconds;
-        _nextScan = Clock.Now + Math.Max(MinRescanSeconds, ms / 1000.0 * 200.0);
-
-        if (_scans == 0 && distances.Count > 0)
-        {
-            distances.Sort();
-            Log.Info($"BUILDING DETAIL: {seen} primitives, {withLod} with a MassiveLOD distance ({parents} stand-ins with children, {replaced} with a stand-in); " +
-                     $"distance min {distances[0]:0} median {distances[distances.Count / 2]:0} max {distances[^1]:0}.");
-        }
-
-        if (_scans == 0 || changed > 0)
-            Log.Info($"BUILDING DETAIL: scale {(_scale > 0f ? _scale.ToString("0.0#") : "GAME")}, changed {changed} in {ms:0} ms; next scan in {_nextScan - Clock.Now:0} s.");
-
-        _scans++;
+        // Rescans keep to about half a percent of the time, however many primitives the city has loaded.
+        _nextScan = Clock.Now + Math.Max(MinRescanSeconds, watch.Elapsed.TotalSeconds * 200.0);
     }
 }

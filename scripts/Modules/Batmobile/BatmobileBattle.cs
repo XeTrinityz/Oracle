@@ -124,7 +124,6 @@ internal sealed partial class Batmobile
                 // Not a press the player meant: the game is in a cutscene, has movement switched off, or just loaded.
                 _battlePending = !toggle;
                 _battleForcedAt = Clock.Now;
-                Log.Throttled("battle any skin settle", "Battle mode on any skin: ignored " + _battleWhy + " (" + (pc.bCinematicMode ? "cinematic" : Clock.Now - _battleCarSince < BattleSettle ? "just loaded or got in" : "movement input is off") + ").");
                 return;
             }
 
@@ -151,7 +150,6 @@ internal sealed partial class Batmobile
         {
             // The game never switches modes while the winch is homing or locked on (IsReadyToTransform), and leaving
             // here strands the winch on in pursuit mode. Stay until it lets go; the release is still pending.
-            Log.Throttled("battle any skin winch hold", "Battle mode on any skin: staying in battle mode until the winch lets go.");
             return;
         }
         else
@@ -268,7 +266,6 @@ internal sealed partial class Batmobile
     private const float BattleDriveSpeedScale = 2f;
     private const float BattleDriveAccel = 6000f;
     private const float BattleDriveBrake = 5000f;
-    private bool _battleDriveLogged;
 
     /// <summary>
     /// A car held on normal driving in battle mode gets no throttle: battle input goes into the sim's
@@ -282,7 +279,6 @@ internal sealed partial class Batmobile
         if (car.SimObj is not RVehicleSimBatmobile { IsValid: true } sim || car.CollisionComponent is not { IsValid: true } body || !car.HasWheelsOnGround())
             return;
         Vector3 move = sim.AbsoluteMoveDirection;
-        string source = "move direction";
         move.Z = 0f;
         if (move.LengthSquared() < 0.0001f && World.Pc is { PlayerInput: { } input } pc)
         {
@@ -291,7 +287,6 @@ internal sealed partial class Batmobile
             var fwd = new Vector3(MathF.Cos(yaw), MathF.Sin(yaw), 0f);
             var right = new Vector3(-fwd.Y, fwd.X, 0f);
             move = fwd * Math.Clamp(input.aBaseY, -1f, 1f) + right * Math.Clamp(input.aStrafe, -1f, 1f);
-            source = "sticks";
         }
 
         float amount = Math.Min(move.Length(), 1f);
@@ -305,12 +300,6 @@ internal sealed partial class Batmobile
         if (change.Length() > step)
             change = Vector3.Normalize(change) * step;
 
-        if (!_battleDriveLogged && amount > 0.05f)
-        {
-            _battleDriveLogged = true;
-            Log.Info("Battle mode on any skin: driving " + Archetype(car) + " from the " + source + " at up to " + MathF.Round(maxSpeed) + " (sim battle speed " + MathF.Round(sim.BattleModeMaxSpeed) + ").");
-        }
-
         // Drive the wheels along the nose too, reversing for backward moves: with no throttle the car brakes
         // against being pushed backwards. Sideways is left to the push.
         float nose = amount > 0.05f ? Vector3.Dot(Vector3.Normalize(move) * amount, car.Rotation.ToDirection() with { Z = 0f }) : 0f;
@@ -318,24 +307,6 @@ internal sealed partial class Batmobile
 
         body.WakeRigidBody(FName.None);
         body.SetRBLinearVelocity(change, true);
-    }
-
-    public override void MenuOpening() => Safe.Run("batmobile controls report", ReportDriveLocks);
-
-    /// <summary>When the menu opens in the car: every flag the game uses to hold the car still, for "I can't move" reports.</summary>
-    private static void ReportDriveLocks()
-    {
-        if (World.Pawn is not RVehicleBatmobileBase car || World.Pc is not { } pc)
-            return;
-
-        var sim = car.SimObj as RVehicleSimBatmobile;
-        var winch = car.BatmobileWinch;
-        Log.Info("Batmobile controls: " + Archetype(car) + " state " + car.GetStateName() + ", drive mode " + (sim?.DriveMode.ToString() ?? "?")
-            + ", controller " + pc.GetStateName() + ", cinematic " + pc.bCinematicMode + ", move input ignored " + Safe.Try("move input", pc.IsMoveInputIgnored) + " (" + pc.bIgnoreMoveInput + ")"
-            + ", max drive speed " + pc.MaxDriveSpeed + ", seq-act " + car.bControlledBySeqAct + ", matinee " + car.MatineeControlRefCount
-            + ", block throttle " + car.BlockThrottleUntilReleased + ", force battle movement " + car.bForceBattleModeMovement + ", locked in battle " + car.bLockInBattleMode
-            + ", battle locked " + car.bBattleModeLocked + ", winch " + (winch is { IsValid: true } ? winch.GetStateName() + " pull " + winch.WinchPullType : "none")
-            + ", throttle " + car.Throttle.ToString("0.00") + ", speed " + MathF.Round(car.Velocity.Length()) + ".");
     }
 
     private static string Archetype(RVehicleBatmobileBase car) => car.ObjectArchetype?.GetPathName(null) ?? "?";

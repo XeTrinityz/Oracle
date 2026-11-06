@@ -22,7 +22,6 @@ internal sealed partial class Batmobile
     private const float ExactHeightRange = 2000f;
     private const float ArrivedWithin = 4000f;
     private const double StartGrace = 1.0;
-    private const double ReportGap = 3.0;
 
     // Pulling up: self-drive lets go 15-20 m short of the route's end without braking, so Oracle brakes the car to a
     // stop there itself, hard enough to stop by the end (between these, in units per second squared).
@@ -37,9 +36,7 @@ internal sealed partial class Batmobile
     private Toggle _autoBoost = null!;
     private RVehicleBatmobileBase? _pilotCar;
     private Vector3 _pilotGoal;
-    private string _pilotTarget = "";
     private double _pilotSince;
-    private Every _pilotReport;
     private RVehicleBatmobileBase? _brakeCar;
     private double _brakeSince;
 
@@ -99,7 +96,6 @@ internal sealed partial class Batmobile
 
         float heightRange = target.Exact ? ExactHeightRange : AnyDistance;
         int start = -1;
-        float reach = 0f;
         Vector3 end = default;
         Pawn? driver = car.Driver;
         try
@@ -107,7 +103,6 @@ internal sealed partial class Batmobile
             car.Driver = null!;
             foreach (float search in RoadSearch)
             {
-                reach = search;
                 start = pc.PlanBatmobileRoute(target.At, false, AnyDistance, out end, search, heightRange, false, Vector3.Zero, null!);
                 // Only "no road near the destination" can get better with a wider search.
                 if (start != -1)
@@ -119,8 +114,6 @@ internal sealed partial class Batmobile
             car.Driver = driver!;
         }
 
-        Log.Info("AUTOPILOT: planning to the " + what.ToLowerInvariant() + " at " + Fmt.Position(target.At) + (target.Exact ? "" : " (map pin)") +
-            " gave " + start + " with a road search of " + Fmt.Metres(reach / 100f).ToLowerInvariant() + ".");
         if (start < 0)
             throw new InvalidOperationException(RouteRefusal(start));
 
@@ -135,11 +128,8 @@ internal sealed partial class Batmobile
         _brakeCar = null;
         _pilotCar = car;
         _pilotGoal = end;
-        _pilotTarget = what;
         _pilotSince = Clock.Now;
-        _pilotReport = default;
-        Log.Info("AUTOPILOT: driving, " + car.SelfDriveRouteSpans.Count + " route spans, the route ends at " + Fmt.Position(end) + ", " +
-            Distance(Geo.DistXY(car.Location, end)).ToLowerInvariant() + " away in a straight line and " + Distance(Geo.DistXY(end, target.At)).ToLowerInvariant() + " from the " + what.ToLowerInvariant() + ".");
+        Log.Info("AUTOPILOT: driving to the " + what.ToLowerInvariant() + " at " + Fmt.Position(target.At) + (target.Exact ? "." : " (map pin)."));
         Overlay.Notice("AUTOPILOT", "DRIVING TO " + what, true);
     }
 
@@ -172,7 +162,6 @@ internal sealed partial class Batmobile
         float left = Geo.DistXY(car.Location, _pilotGoal);
         if (car.SelfDriveMode == SelfDrive.SELFDRIVE_None && Clock.Now - _pilotSince > StartGrace)
         {
-            Log.Info("AUTOPILOT: the game finished driving to the " + _pilotTarget.ToLowerInvariant() + ", " + Distance(left).ToLowerInvariant() + " from the end of the route.");
             bool arrived = left < ArrivedWithin;
             StopAutopilot(arrived ? "ARRIVED" : "STOPPED SHORT");
             if (arrived)
@@ -185,12 +174,6 @@ internal sealed partial class Batmobile
             StopAutopilot("BATTLE MODE, YOU HAVE THE WHEEL");
             return;
         }
-
-        if (_pilotReport.Elapsed(ReportGap))
-        {
-            Log.Info("AUTOPILOT: " + Speed(car.Velocity.Length()).ToLowerInvariant() + ", " + car.SelfDriveMode + ", span " + car.SelfDriveNextSpan + " of " +
-                car.SelfDriveRouteSpans.Count + ", " + Distance(left).ToLowerInvariant() + " to go.");
-        }
     }
 
     private void StartBrake(RVehicleBatmobileBase car)
@@ -199,7 +182,6 @@ internal sealed partial class Batmobile
         _brakeSince = Clock.Now;
         // The game's own hard stop: brake lights and its timed brake force, when the car is on the ground and moving fast.
         Safe.Run("emergency brake", car.EmergencyBrake);
-        Log.Info("AUTOPILOT: pulling up from " + Speed(car.Velocity.Length()).ToLowerInvariant() + ".");
     }
 
     /// <summary>Slows the car along its own direction of travel, so it stops at the end of the route instead of coasting past.</summary>
@@ -217,7 +199,6 @@ internal sealed partial class Batmobile
         float speed = flat.Length();
         if (speed < StoppedSpeed)
         {
-            Log.Info("AUTOPILOT: stopped " + Distance(Geo.DistXY(car.Location, _pilotGoal)).ToLowerInvariant() + " from the end of the route.");
             _brakeCar = null;
             return;
         }

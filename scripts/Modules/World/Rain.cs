@@ -91,6 +91,11 @@ internal sealed class Rain : Module
     private readonly HashSet<string> _muted = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AkEvent?[]> _surfaces = new(StringComparer.Ordinal);
     private readonly HashSet<string> _emitters = new(StringComparer.Ordinal);
+
+    // Surfaces and emitters MuteAudio has already looked at in this world, by wrapper: one wrapper is one live object,
+    // so neither is read again every refresh. Cleared whenever the sounds go back.
+    private readonly HashSet<PhysicalMaterial> _surfacesSeen = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<AkEmitter> _dryEmitters = new(ReferenceEqualityComparer.Instance);
     private AkParameterName? _param;
     private bool _paramSet;
     private float _resyncLeft = -1f;
@@ -103,7 +108,6 @@ internal sealed class Rain : Module
     private float _puddles = 1f;
     private bool _noMist;
     private bool _noFarRain;
-    private bool _reported;
     private Every _refresh;
     private bool _dirty;
 
@@ -152,9 +156,7 @@ internal sealed class Rain : Module
         if (v <= 0f || World.Info is not { } gi)
             return;
 
-        bool cloud = Safe.Try("gas check", () => gi.IsGasActive());
-        Log.Detail("Toxin rain: fear gas " + (cloud ? "active" : "not active") + ".");
-        if (!cloud)
+        if (!Safe.Try("gas check", () => gi.IsGasActive()))
             Overlay.Notice("TOXIN RAIN", "NEEDS SCARECROW'S TOXIN CLOUD", false);
     }
 
@@ -201,9 +203,10 @@ internal sealed class Rain : Module
         _mistOff.Clear();
         _surfaces.Clear();
         _emitters.Clear();
+        _surfacesSeen.Clear();
+        _dryEmitters.Clear();
         _param = null;
         _paramSet = false;
-        _reported = false;
         _dirty = true;
     }
 
@@ -258,16 +261,8 @@ internal sealed class Rain : Module
             if (!known || !_written.TryGetValue(key, out Values w) || live != w)
             {
                 AkEvent? bed = s.RainSoundBed is { IsValid: true } b ? b : known ? o.Bed : null;
-                if (known)
-                    Log.Detail("Rain: the game changed " + key + ", following it.");
                 o = new State(live, bed);
                 _originals[key] = o;
-                if (!_reported)
-                {
-                    _reported = true;
-                    Log.Info("Rain: game values density " + live.Density + ", toxin " + live.Gas + ", sludge " + live.Sludge.R + "/" + live.Sludge.G + "/" + live.Sludge.B
-                        + ", spatter " + live.Spatter + ", puddle threshold " + live.Puddle + ", wake " + live.Wake + ".");
-                }
             }
 
             Values g = o.V;
@@ -337,6 +332,9 @@ internal sealed class Rain : Module
 
         foreach (PhysicalMaterial m in World.All<PhysicalMaterial>())
         {
+            if (!_surfacesSeen.Add(m))
+                continue;
+
             string key = m.GetPathName(null);
             if (_surfaces.ContainsKey(key))
                 continue;
@@ -359,8 +357,13 @@ internal sealed class Rain : Module
 
         foreach (AkEmitter e in World.All<AkEmitter>())
         {
-            if (!e.bEmitterEnabled || !PlaysRain(e))
+            if (!e.bEmitterEnabled || _dryEmitters.Contains(e))
                 continue;
+            if (!PlaysRain(e))
+            {
+                _dryEmitters.Add(e);
+                continue;
+            }
 
             e.DisableEmitter();
             _emitters.Add(e.GetPathName(null));
@@ -415,6 +418,8 @@ internal sealed class Rain : Module
             _surfaces.Clear();
         }
 
+        _surfacesSeen.Clear();
+        _dryEmitters.Clear();
         if (_emitters.Count > 0)
         {
             foreach (AkEmitter e in World.All<AkEmitter>())

@@ -171,7 +171,6 @@ internal sealed partial class Batmobile
         RVehicleBatmobileBase.DebugSetTireFrictionMod(TyreType.ETyreType_Batmobile, mod);
         RVehicleBatmobileBase.DebugSetTireFrictionMod(TyreType.ETyreType_BatmobileBattleMode, mod);
         _gripApplied = mod;
-        Log.Info("Tyre grip set to " + mod.ToString("0.00", CultureInfo.InvariantCulture) + "x.");
     }
 
     private void RestoreGrip()
@@ -208,8 +207,6 @@ internal sealed partial class Batmobile
 
             float scale = wi.RBPhysicsGravityScaling > 0f ? wi.RBPhysicsGravityScaling : 1f;
             _gravity = -wi.GetGravityZ() * scale;
-            Log.Info("AIR GRAVITY: world gravity " + wi.GetGravityZ().ToString("0", CultureInfo.InvariantCulture) + ", rigid body scaling " +
-                wi.RBPhysicsGravityScaling.ToString("0.##", CultureInfo.InvariantCulture) + ", so cars fall at " + _gravity.ToString("0", CultureInfo.InvariantCulture) + " per second squared.");
             if (_gravity <= 0f)
                 return;
         }

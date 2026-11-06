@@ -35,7 +35,6 @@ internal sealed class PostFx : Module
     private Slider _fogHeight = null!;
     private Every _scan;
     private bool _dirty;
-    private bool _reported;
 
     // Plain doubles so the originals outlive a hot reload, which would orphan any type of ours.
     private static Dictionary<string, double[]> Originals => Shared.Keep(OriginalsKey, () => new Dictionary<string, double[]>());
@@ -73,7 +72,6 @@ internal sealed class PostFx : Module
     public override void WorldChanged()
     {
         _dirty = true;
-        _reported = false;
         _scan.Force();
     }
 
@@ -118,11 +116,6 @@ internal sealed class PostFx : Module
         {
             o = Read(ref st);
             originals[key] = o;
-            if (!_reported && key == DefaultSettingsKey)
-            {
-                _reported = true;
-                Log.Info("PostFx: world defaults " + string.Join(", ", Enumerable.Range(0, (int)F.Count).Select(i => (F)i + "=" + o[i].ToString("0.###", CultureInfo.InvariantCulture))) + ".");
-            }
         }
 
         double[] n = (double[])o.Clone();

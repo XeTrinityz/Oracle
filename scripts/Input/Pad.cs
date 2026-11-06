@@ -281,7 +281,7 @@ internal static class Pad
         if (!Enabled)
         {
             if (_blockedInput != 0 || _restorePending)
-                Unblock("controller support off");
+                Unblock();
             ReleaseOwned();
             _now = 0;
             _prev = 0;
@@ -298,7 +298,7 @@ internal static class Pad
             _held = -1f;
             _mapDeferred = false;
             if (_blockedInput != 0 || _restorePending)
-                Unblock("controller disconnected");
+                Unblock();
             if (Radial.IsLive && Radial.OpenedBy == Radial.Source.Pad)
                 Radial.Close();
             return;
@@ -314,7 +314,7 @@ internal static class Pad
         if (!Menu.IsOpen)
         {
             if (_restorePending && (_now & ~Start) == 0)
-                Unblock("menu closed");
+                Unblock();
             RepairBindings();
             SyncOwned();
             ClosedFrame(dt);
@@ -528,7 +528,7 @@ internal static class Pad
             {
                 int parked = ParkNamed(input, _ownedBind, true);
                 if (parked > 0)
-                    Log.Detail("Pad: " + _ownedBind + " belongs to the radial now (" + parked + " bindings parked).");
+                    Log.Info("Pad: " + _ownedBind + " belongs to the radial now (" + parked + " bindings parked).");
                 _parkedOwned = _ownedBind;
                 _ownedInput = input.Ptr;
             }
@@ -670,16 +670,16 @@ internal static class Pad
         if (Connected && (_now & ~Start) != 0)
             _restorePending = true;
         else
-            Unblock("menu closed");
+            Unblock();
     }
 
     public static void Shutdown()
     {
-        Unblock("mod unloaded");
+        Unblock();
         ReleaseOwned();
     }
 
-    private static void Unblock(string why)
+    private static void Unblock()
     {
         _restorePending = false;
         _blockedInput = 0;
@@ -691,9 +691,8 @@ internal static class Pad
             if (input == null)
                 return;
 
-            int restored = Park(input, false);
+            Park(input, false);
             _repairedInput = input.Ptr;
-            Log.Detail("Pad: " + restored + " controller bindings back on (" + why + ").");
         }
         catch (Exception ex)
         {

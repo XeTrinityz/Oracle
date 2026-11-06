@@ -32,7 +32,6 @@ internal sealed class Saves : Module
     private List<SaveFiles.Entry> _shown = new();
     private readonly Dictionary<int, string> _places = new();
     private Dictionary<string, string>? _placeNames;
-    private bool _slotLogged;
 
     // SAVE NOW AND KEEP A COPY: waiting for the autosave to land on disk.
     private float _keepLeft;
@@ -72,8 +71,6 @@ internal sealed class Saves : Module
     public override void Started() => Safe.Run("save folders", SaveFiles.Locate);
 
     public override void MenuOpening() => Refresh();
-
-    public override void WorldChanged() => _slotLogged = false;
 
     // Quitting or loading abandons any autosave still being waited on, so stop waiting rather than report a failure later.
     public override void LeftGame() => _keepLeft = 0f;
@@ -288,20 +285,7 @@ internal sealed class Saves : Module
         if (match != null)
         {
             Shared.Set(SlotKey, match.Slot);
-            LogMatch(match);
             return match.Slot;
-        }
-
-        if (World.InGame && !_slotLogged && _all.Count > 0)
-        {
-            _slotLogged = true;
-            Safe.Run("save check", () =>
-            {
-                RPersistentOptions? po = World.Ri?.PersistentOptions;
-                Log.Detail("Saves: no file matches the game's save stamp " + live + (live != 0 ? " (" + DateTime.FromFileTimeUtc(live).ToLocalTime().ToString("u", Inv) + ")" : "")
-                    + "; options " + (po is { IsValid: true } ? po.PercentageCompleted + "%, location " + po.LocationID + ", " + po.Day + "/" + po.Month + "/" + po.Year : "unavailable")
-                    + ". Newest file: " + Path.GetFileName(_all[0].Path) + " stamp " + _all[0].Stamp + ".");
-            });
         }
 
         int remembered = Shared.GetValue(SlotKey, -1);
@@ -309,22 +293,6 @@ internal sealed class Saves : Module
             return remembered;
 
         return _all.Find(e => e.Kind == SaveFiles.Kind.Current)?.Slot ?? -1;
-    }
-
-    // Once per world: checks the header reading against what the game itself holds for the loaded save.
-    private void LogMatch(SaveFiles.Entry e)
-    {
-        if (_slotLogged)
-            return;
-        _slotLogged = true;
-
-        Safe.Run("save check", () =>
-        {
-            if (World.Ri?.PersistentOptions is not { IsValid: true } po)
-                return;
-            Log.Detail("Saves: playing slot " + (e.Slot + 1) + " (" + Path.GetFileName(e.Path) + "). File says " + e.Percent + "%, location " + e.LocationId + ", " + e.Difficulty
-                + "; the game says " + po.PercentageCompleted + "%, location " + po.LocationID + ", " + po.DifficultyString + ".");
-        });
     }
 
     // ---- commands

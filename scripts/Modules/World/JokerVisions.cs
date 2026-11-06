@@ -26,6 +26,7 @@ internal sealed class JokerVisions : Module
     private readonly HashSet<nint> _swappedPtrs = new();
     private readonly HashSet<nint> _keepFlag = new();
     private readonly Dictionary<(nint Comp, int Slot), MaterialInterface> _painted = new();
+    private readonly Dictionary<StaticMesh, bool> _billboardMesh = new(ReferenceEqualityComparer.Instance);
     private readonly List<(RBMPawnAI Pawn, RRiotBrain Brain, double Until)> _jokers = new();
     private readonly Held<RGameInfo, float> _ch3 = Chance("Ch3", g => g.jokerSwappableChance_Ch3, (g, v) => g.jokerSwappableChance_Ch3 = v);
     private readonly Held<RGameInfo, float> _ch5 = Chance("Ch5", g => g.jokerSwappableChance_Ch5, (g, v) => g.jokerSwappableChance_Ch5 = v);
@@ -63,6 +64,7 @@ internal sealed class JokerVisions : Module
         _keepFlag.Clear();
         _painted.Clear();
         _pairs = new();
+        _billboardMesh.Clear();
     }
 
     public override void Shutdown()
@@ -105,7 +107,6 @@ internal sealed class JokerVisions : Module
         if (!_sweep.Elapsed(SweepSeconds))
             return;
 
-        int fresh = 0;
         foreach (RJokerBillboard b in World.All<RJokerBillboard>())
         {
             // One the game forced itself belongs to a story beat: leave it be.
@@ -117,12 +118,9 @@ internal sealed class JokerVisions : Module
                 Swap(b);
             _swapped.Add(b);
             _swappedPtrs.Add(b.Ptr);
-            fresh++;
         }
 
-        fresh += PaintOthers();
-        if (fresh > 0)
-            Log.Detail("Jokerfy: " + fresh + " more billboards, " + (_swapped.Count + _painted.Count) + " held.");
+        PaintOthers();
     }
 
     private void Swap(RJokerBillboard b)
@@ -140,17 +138,16 @@ internal sealed class JokerVisions : Module
     /// Billboard meshes outside the game's Joker billboards: any slot showing a design's normal material
     /// (City_Billboard_Joker_[Design]A_INST) gets its loaded Joker partner (.Joker.City_Billboard_Joker_[Design]B_INST).
     /// </summary>
-    private int PaintOthers()
+    private void PaintOthers()
     {
         if (_pairs.Count == 0 || _repair.Elapsed(PairSeconds))
             _pairs = Pairs();
         if (_pairs.Count == 0)
-            return 0;
+            return;
 
-        int painted = 0;
         foreach (StaticMeshComponent c in World.All<StaticMeshComponent>())
         {
-            if (c.Owner is RJokerBillboard || c.StaticMesh is not { IsValid: true } mesh || !mesh.Name.ToString().Contains("Billboard", StringComparison.OrdinalIgnoreCase))
+            if (c.Owner is RJokerBillboard || c.StaticMesh is not { IsValid: true } mesh || !IsBillboard(mesh))
                 continue;
 
             int n = Math.Min(c.GetNumElements(), 8);
@@ -161,11 +158,19 @@ internal sealed class JokerVisions : Module
 
                 c.SetMaterial(i, joker);
                 _painted[(c.Ptr, i)] = now;
-                painted++;
             }
         }
+    }
 
-        return painted;
+    /// <summary>
+    /// Whether a mesh is a billboard, remembered per mesh: thousands of components share a few meshes, and reading
+    /// every component's mesh name each sweep built a string per component in the city.
+    /// </summary>
+    private bool IsBillboard(StaticMesh mesh)
+    {
+        if (!_billboardMesh.TryGetValue(mesh, out bool yes))
+            _billboardMesh[mesh] = yes = mesh.Name.ToString().Contains("Billboard", StringComparison.OrdinalIgnoreCase);
+        return yes;
     }
 
     /// <summary>Normal design material (A) to its Joker partner (B), for the pairs whose both halves are loaded.</summary>

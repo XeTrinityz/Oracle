@@ -49,7 +49,6 @@ internal sealed class Cosmetics : Module
         int level = _damage.Index;
         batman.SetDamageLevel(loaded.CharacterName, level, false);
         batman.SetupPlayerMesh(true);
-        Log.Info("Battle damage set to " + level + " on " + loaded.CharacterName + ".");
     }
 
     private static void ApplySize(float v)

@@ -142,7 +142,7 @@ internal sealed partial class CameraRig
         }
         catch (Exception ex)
         {
-            Log.Throttled("camera before", "Camera update (before) failed: " + Log.Why(ex));
+            Log.Error("camera before", "Camera update (before)", ex);
         }
 
         self.UpdateCamera(deltaTime);
@@ -156,7 +156,7 @@ internal sealed partial class CameraRig
         }
         catch (Exception ex)
         {
-            Log.Throttled("camera after", "Camera update (after) failed: " + Log.Why(ex));
+            Log.Error("camera after", "Camera update (after)", ex);
         }
     }
 

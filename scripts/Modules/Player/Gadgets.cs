@@ -79,10 +79,7 @@ internal sealed class Gadgets : Module
     private static void ReduceAmmoRedirect(RDisruptorSniper self)
     {
         if (I.UnlimitedCharges is { On: true })
-        {
-            Log.Throttled("disruptor charge", "Unlimited disruptor charges: kept a charge.");
             return;
-        }
 
         self.ReduceAmmo();
     }

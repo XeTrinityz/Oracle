@@ -93,7 +93,6 @@ internal sealed class Population : Module
         // The game's own deferred clear-out: what it does when an AR challenge or Most Wanted mission starts.
         _clearedIn = pm.Ptr;
         pm.bRemovePopulationOnNextTick = true;
-        Log.Info("Empty streets: population cleared.");
     }
 
     private void Release()
@@ -194,9 +193,6 @@ internal sealed class Population : Module
             }
         }
 
-        Log.Detail("Batmobile mob: " + car.GetPathName(null) + " at " + Fmt.Position(car.Location) + ", " + came + " thugs after " + tries + " tries, "
-            + pm.CurrentBatmobileMobThugs.Count + " in the mob list, thug pool " + (pm.ThugPool is { IsValid: true } pool ? pool.InactivePawns.Count + " free" : "missing") + ".");
-
         if (came <= 0)
             throw new InvalidOperationException("no free street right around the Batmobile for thugs to come from");
 
@@ -238,8 +234,6 @@ internal sealed class Population : Module
             var before = new HashSet<nint>(World.All<RVehicleNPC>().Select(v => v.Ptr));
             pm.SpawnVehicleScenario(type, encounter, false);
             var fresh = World.All<RVehicleNPC>().Where(v => !v.bDeleteMe && !before.Contains(v.Ptr)).ToList();
-            foreach (RVehicleNPC v in fresh)
-                Log.Detail("Getaway: " + what + " brought " + v.Class.Name + " " + v.GetPathName(null) + ", " + (int)(DistanceTo(v) / 100f) + " m away.");
 
             // The car to chase: an ordinary car among what arrived (the cop chase also brings the police).
             RVehicleCar? car = fresh.OfType<RVehicleCar>().Where(c => c.Wheels.Count <= 4).OrderBy(DistanceTo).FirstOrDefault();

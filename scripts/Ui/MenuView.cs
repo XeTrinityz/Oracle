@@ -489,7 +489,12 @@ internal static class MenuView
             float room = bw - S(22);
             while (q.Length > 1 && TextW(q, SmallScale) > room)
                 q = q.Substring(1);
-            float qw = q.Length > 0 ? TextMid(bx + S(9), cyBox, q, Theme.Hi, SmallScale) : 0f;
+            float qw = 0f;
+            if (q.Length > 0)
+            {
+                TextMid(bx + S(9), cyBox, q, Theme.Hi, SmallScale);
+                qw = TextW(q, SmallScale);
+            }
             if (Blink)
                 Rect(bx + S(9) + qw + S(2), cyBox - S(6), S(2), S(12), Theme.Signal);
         }
@@ -761,7 +766,8 @@ internal static class MenuView
     private static void DrawGroup(string label, float left, float right, float cy, Rgba accent)
     {
         Rgba col = label.Contains("SAVE", StringComparison.Ordinal) ? Theme.Warn : accent;
-        float tw = TextMid(left, cy + S(3), label, col, SmallScale, 0.9f);
+        TextMid(left, cy + S(3), label, col, SmallScale, 0.9f);
+        float tw = TextW(label, SmallScale);
         Rect(left + tw + S(10), cy + S(3), right - left - tw - S(10), S(1), Theme.White, 0.07f);
     }
 
@@ -781,7 +787,8 @@ internal static class MenuView
         int key = f.GetHashCode() * 8;
         float shift = Approach(key, sel ? 1f : 0f, 20f);
         float lx = left + S(4) * shift;
-        float end = lx + TextMid(lx, cy, f.Label, Rgba.Mix(Theme.Mid, Theme.Hi, shift), LabelScale);
+        TextMid(lx, cy, f.Label, Rgba.Mix(Theme.Mid, Theme.Hi, shift), LabelScale);
+        float end = lx + TextW(f.Label, LabelScale);
 
         // A running row gets a slim tick on the panel's edge, where the selection bar sits, so runs of them read
         // as a segmented strip down the side.
@@ -1167,7 +1174,8 @@ internal static class MenuView
         float mx = left;
         if (Settings.Hotkeys.TryGetValue(f.Id, out Keys key))
         {
-            mx += TextMid(mx, cy, "HOTKEY", Theme.Low, TagScale) + S(6);
+            TextMid(mx, cy, "HOTKEY", Theme.Low, TagScale);
+            mx += TextW("HOTKEY", TagScale) + S(6);
             mx += Chip(mx, cy, KeyName(key), Theme.Mid, 0.08f) + S(14);
         }
 
@@ -1179,8 +1187,10 @@ internal static class MenuView
         };
         if (fallback != null)
         {
-            mx += TextMid(mx, cy, "DEFAULT", Theme.Low, TagScale) + S(6);
-            mx += TextMid(mx, cy, fallback, Theme.Mid, TagScale) + S(14);
+            TextMid(mx, cy, "DEFAULT", Theme.Low, TagScale);
+            mx += TextW("DEFAULT", TagScale) + S(6);
+            TextMid(mx, cy, fallback, Theme.Mid, TagScale);
+            mx += TextW(fallback, TagScale) + S(14);
         }
 
         if (f is Choice { Labels.Length: > 2 } many)
@@ -1271,7 +1281,8 @@ internal static class MenuView
                 break;
 
             hx += Chip(hx, cy, key, Theme.Hi, 0.1f) + S(6);
-            hx += TextMid(hx, cy, label, Theme.Mid, SmallScale * 0.92f) + S(16);
+            TextMid(hx, cy, label, Theme.Mid, SmallScale * 0.92f);
+            hx += TextW(label, SmallScale * 0.92f) + S(16);
         }
     }
 

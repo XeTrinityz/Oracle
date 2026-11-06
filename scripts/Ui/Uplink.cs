@@ -92,7 +92,8 @@ internal static class Uplink
             return;
 
         float cy = y + S(LineH) * 0.5f;
-        float lw = TextMid(left, cy, label, Theme.Low, TagScale);
+        TextMid(left, cy, label, Theme.Low, TagScale);
+        float lw = TextW(label, TagScale);
         string shown = Fit(value, right - left - lw - S(10));
         TextRight(right, cy, shown, Theme.Mid, ValueScale);
         y += S(LineH);

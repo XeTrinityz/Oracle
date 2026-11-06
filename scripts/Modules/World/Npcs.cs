@@ -83,29 +83,20 @@ internal sealed class Npcs : Module
     {
         public required int Team;
         public nint Target;
-        public nint Applied;
         public bool SelfManaged;
         public bool Marked;
         public bool Benched;
-        public bool Reported;
-        public bool SawReset;
         public bool Shooting;
         public nint ShotAt;
         public double AimedSince;
         public double NextBurst;
-        public bool GunReported;
-        public bool ReloadReported;
-        public int GunHealthBefore;
-        public double GunCheckAt;
     }
     private int _nextGang;
     private Toggle _gangWar = null!;
     private Toggle _freeForAll = null!;
     private int _nextLoner = Loner;
-    private bool _forceReported;
     private Slider _hitsToKo = null!;
     private Choice _weapon = null!;
-    private readonly HashSet<nint> _hitReported = new();
     private const float MeleeReach = 320f;
 
     /// <summary>The weapons ARM can hand out: the game's own weapon classes, which RSeqAct_GiveWeapon also spawns.</summary>
@@ -228,8 +219,6 @@ internal sealed class Npcs : Module
         _pacified.Clear();
         _team.Clear();
         _hackedTanks.Clear();
-        _forceReported = false;
-        _hitReported.Clear();
         _scan.Force();
     }
 
@@ -934,7 +923,6 @@ internal sealed class Npcs : Module
             v.SetHostile(true, new FName("None"));
         _team[v.Ptr] = new Loyal { Team = WithYou };
         _allegiance.Force();
-        Log.Info("turncoat: " + v.Name + (v.CurrentGun is { IsValid: true } ? " (armed)" : ""));
 
         bool anyone = Near().OfType<RPawnVillain>().Any(q => q.Ptr != v.Ptr && q.IsValid && CanFight(WithYou, q));
         Overlay.Notice(NoticeTitle, anyone ? "ENEMY TURNED" : "TURNED, BUT NOBODY TO FIGHT" + (_pacified.Count > 0 ? " (PACIFY IS ON)" : ""), true);
@@ -1053,7 +1041,6 @@ internal sealed class Npcs : Module
             // Nobody left on the other side: stand down rather than go back to fighting you.
             if (v.OverrideTargetPawn is { IsValid: true })
                 v.OverrideTargetPawn = null!;
-            l.Applied = 0;
             StopShooting(v, l);
             if (!l.Benched && v.IsHostile())
             {
@@ -1084,27 +1071,12 @@ internal sealed class Npcs : Module
 
         nint now = v.OverrideTargetPawn is { IsValid: true } o ? o.Ptr : 0;
         if (now != target.Ptr)
-        {
-            if (l.Applied != 0 && now != l.Applied && !l.SawReset)
-            {
-                l.SawReset = true;
-                Log.Info("allegiance: the game changed " + v.Name + "'s override to " + (now == 0 ? "none" : v.OverrideTargetPawn.Name));
-            }
-
             v.OverrideTargetPawn = target;
-        }
 
-        l.Applied = target.Ptr;
         if (v.CurrentGun is { IsValid: true })
             Shoot(v, l, target);
         else
             StopShooting(v, l);
-
-        if (!l.Reported)
-        {
-            l.Reported = true;
-            Log.Info("allegiance: " + v.Name + " (team " + l.Team + ") -> " + target.Name + (v.CurrentGun is { IsValid: true } ? ", armed" : ""));
-        }
     }
 
     // ---- turncoat hits
@@ -1172,21 +1144,16 @@ internal sealed class Npcs : Module
             return;
 
         int before = t.Health;
-        string how = "DamagePawn";
         if (move is RCombatMove_VillainCloseAttack close)
             close.DamagePawn(t);
 
         if (t.Health >= before && Alive(t))
         {
-            how = "TakeDamage";
             int max = Math.Max(Math.Max(t.HealthMax, before), 1);
             int amount = Math.Max(1, (int)MathF.Ceiling(max / Math.Max(1f, _hitsToKo.Value)));
             Vector3 push = Vector3.Normalize(t.Location - v.Location) * 400f;
             t.TakeDamage(amount, v.Controller, t.Location, push, damageType(), default, v);
         }
-
-        if (_hitReported.Add(v.Ptr))
-            Log.Info("turncoat hit: " + v.Name + " " + move.Class.Name + " -> " + t.Name + " via " + how + ", health " + before + " -> " + t.Health + " of " + t.HealthMax);
     }
 
     // ---- turncoat guns
@@ -1234,26 +1201,7 @@ internal sealed class Npcs : Module
             {
                 v.ReloadGun(true);
                 l.NextBurst = now + 0.3;
-                if (!l.ReloadReported)
-                {
-                    l.ReloadReported = true;
-                    Log.Info("turncoat gun: " + v.Name + " wouldn't fire, reloaded");
-                }
             }
-
-            if (!l.GunReported)
-            {
-                l.GunReported = true;
-                l.GunHealthBefore = target.Health;
-                l.GunCheckAt = now + 2.0;
-                Log.Info("turncoat gun: " + v.Name + " (" + v.CurrentGun.Class.Name + ") firing at " + target.Name + ", health " + target.Health + ", firing " + v.bFiring);
-            }
-        }
-
-        if (l.GunCheckAt > 0 && now >= l.GunCheckAt)
-        {
-            l.GunCheckAt = 0;
-            Log.Info("turncoat gun: after 2 s " + target.Name + " health " + l.GunHealthBefore + " -> " + target.Health + (Alive(target) ? "" : " (down)"));
         }
     }
 
@@ -1379,13 +1327,6 @@ internal sealed class Npcs : Module
             turned = -to / dist * scale * 0.5f;
         else
             turned = Vector3.Zero;
-
-        if (!_forceReported)
-        {
-            _forceReported = true;
-            Log.Info("turned movement: " + v.Name + " game force " + force.Length().ToString("0.0", CultureInfo.InvariantCulture)
-                + ", max " + self.MaxMoveSpeedForce.ToString("0.0", CultureInfo.InvariantCulture) + ", target " + (dist / Metre).ToString("0.0", CultureInfo.InvariantCulture) + " m away");
-        }
 
         return turned;
     }

@@ -86,6 +86,7 @@ internal sealed class PreScarecrowLook : Module
 
     private Dictionary<string, string>? _look;
     private Texture? _lut;
+    private bool _lutMissingLogged;
     private bool _force;
     private Every _scan;
 
@@ -97,6 +98,7 @@ internal sealed class PreScarecrowLook : Module
         // The volumes are about to go; their originals go with them.
         _originals.Clear();
         _lut = null;
+        _lutMissingLogged = false;
         _force = true;
     }
 
@@ -112,6 +114,7 @@ internal sealed class PreScarecrowLook : Module
             return;
         _look = on ? Parse(PreScarecrow) : null;
         _lut = null;
+        _lutMissingLogged = false;
         _force = true;
     }
 
@@ -157,6 +160,8 @@ internal sealed class PreScarecrowLook : Module
             {
                 if (ByName.TryGetValue(name, out Field? f))
                     orig[name] = f.Get(ref st);
+                else if (name.Equals(LutField, StringComparison.OrdinalIgnoreCase))
+                    orig[name] = st.ColorGrading_LookupTable is { IsValid: true } lut ? lut.GetPathName(null) : "None";
             }
 
             _originals[key] = orig;
@@ -180,7 +185,8 @@ internal sealed class PreScarecrowLook : Module
 
             try
             {
-                if (f.Get(ref st) != Normalise(f, value))
+                // Values are already as the getter prints them (Parse normalises the look), so an unchanged field isn't rewritten.
+                if (f.Get(ref st) != value)
                     f.Set(ref st, value);
             }
             catch (Exception e)
@@ -190,7 +196,7 @@ internal sealed class PreScarecrowLook : Module
         }
     }
 
-    // Compare as the getter would print it, so an unchanged field isn't rewritten every second.
+    // As the getter would print it, so comparing with a live value is a plain string compare.
     private static string Normalise(Field f, string value)
     {
         var tmp = default(PPSettings);
@@ -198,9 +204,28 @@ internal sealed class PreScarecrowLook : Module
         return f.Get(ref tmp);
     }
 
+    // A value that won't parse is kept as written, so setting it fails and logs in Write as before.
+    private static string NormaliseOrKeep(Field f, string value)
+    {
+        try
+        {
+            return Normalise(f, value);
+        }
+        catch (Exception)
+        {
+            return value;
+        }
+    }
+
+    /// <summary>
+    /// The era's colour grading while the look is on; with it off, the volume's own grading, saved by path with its other
+    /// originals. A texture that can't be found is left as it is rather than cleared.
+    /// </summary>
     private void WriteLut(ref PPSettings st, string path)
     {
-        Texture? want = path is "" or "None" ? null : _lut is { IsValid: true } known && known.GetPathName(null) == path ? known : FindLut(path);
+        Texture? want = path is "" or "None" ? null
+            : _look == null ? (Game.FindObject<Texture>(path) is { IsValid: true } back ? back : null)
+            : _lut is { IsValid: true } known ? known : FindLut(path);
         if (want == null && path is not ("" or "None"))
             return;
 
@@ -210,19 +235,17 @@ internal sealed class PreScarecrowLook : Module
             st.ColorGrading_LookupTable = want!;
     }
 
+    /// <summary>The engine's own lookup by path: walking every loaded texture for it took a pass per volume each second.</summary>
     private Texture? FindLut(string path)
     {
-        foreach (Texture t in World.All<Texture>())
+        _lut = Game.FindObject<Texture>(path) is { IsValid: true } found ? found : null;
+        if (_lut == null && !_lutMissingLogged)
         {
-            if (t.GetPathName(null).Equals(path, StringComparison.OrdinalIgnoreCase))
-            {
-                _lut = t;
-                return t;
-            }
+            _lutMissingLogged = true;
+            Log.Info("PRE-SCARECROW ERA: colour grading " + path + " isn't loaded here, so the look runs without it.");
         }
 
-        Log.Throttled("era look lut " + path, "PRE-SCARECROW ERA: colour grading " + path + " isn't loaded here, so the look runs without it.");
-        return null;
+        return _lut;
     }
 
     private static Dictionary<string, string> Parse(string text)
@@ -236,8 +259,11 @@ internal sealed class PreScarecrowLook : Module
                 continue;
 
             string name = line.Substring(0, eq).Trim();
-            if (ByName.ContainsKey(name) || name.Equals(LutField, StringComparison.OrdinalIgnoreCase))
-                d[name] = line.Substring(eq + 1).Trim();
+            string value = line.Substring(eq + 1).Trim();
+            if (ByName.TryGetValue(name, out Field? f))
+                d[name] = NormaliseOrKeep(f, value);
+            else if (name.Equals(LutField, StringComparison.OrdinalIgnoreCase))
+                d[name] = value;
         }
 
         return d;

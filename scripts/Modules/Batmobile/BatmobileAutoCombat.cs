@@ -35,23 +35,17 @@ internal sealed partial class Batmobile
     private const float ShootDownNear = 600f;
     private const float ShootDownClosing = 4000f;
     private const double ShootDownGap = 0.15;
-    private const double ReportEvery = 10.0;
 
     private Slider _combatRange = null!;
     private Slider _combatRate = null!;
     private readonly List<RVehicleNPC> _foes = new();
     private readonly Queue<RVehicleNPC> _barrage = new();
     private Every _foeScan;
-    private Every _combatReport;
     private double _shellAt;
     private double _missileAt;
     private double _barrageAt;
     private double _barrageNext;
     private double _downAt;
-    private int _shells;
-    private int _missiles;
-    private int _barrages;
-    private int _shotDown;
 
     private void BuildAutoCombat()
     {
@@ -76,7 +70,6 @@ internal sealed partial class Batmobile
         float rate = _combatRate.Value;
         if (_foeScan.Elapsed(0.5))
             FindFoes(car);
-        Report();
 
         RBatmobileMissileLauncher? launcher = Weapon<RBatmobileMissileLauncher>();
         if (_barrage.Count > 0)
@@ -96,7 +89,6 @@ internal sealed partial class Batmobile
         if (launcher != null && _foes.Count >= BarrageMin && now - _barrageAt > BarrageGap / rate)
         {
             _barrageAt = now;
-            _barrages++;
             int size = launcher.MaxTargets > 0 ? launcher.MaxTargets : BarrageDefault;
             foreach (RVehicleNPC foe in _foes.Take(size))
                 _barrage.Enqueue(foe);
@@ -188,7 +180,6 @@ internal sealed partial class Batmobile
         }
 
         p.Init(dir);
-        _shells++;
         return true;
     }
 
@@ -211,7 +202,6 @@ internal sealed partial class Batmobile
         }
 
         p.Init(dir);
-        _missiles++;
     }
 
     private void ShootDownTick()
@@ -219,7 +209,6 @@ internal sealed partial class Batmobile
         if (World.Pawn is not { } me || World.Paused || Clock.Now - _downAt < ShootDownGap)
             return;
 
-        Report();
         Vector3 at = me.Location;
         nint player = World.Player?.Ptr ?? 0;
         foreach (RTankMissile m in World.All<RTankMissile>())
@@ -240,20 +229,8 @@ internal sealed partial class Batmobile
             if (m.WasShotOutOfSky)
             {
                 _downAt = Clock.Now;
-                _shotDown++;
                 return;
             }
         }
-    }
-
-    /// <summary>What AUTO COMBAT and SHOOT DOWN MISSILES did lately, so a fight can be read back from Oracle.log.</summary>
-    private void Report()
-    {
-        if (!_combatReport.Elapsed(ReportEvery) || _shells + _missiles + _barrages + _shotDown == 0)
-            return;
-
-        Log.Info("AUTO COMBAT: in the last " + ReportEvery + " s, " + _foes.Count + " targets in range, fired " + _shells + " shells, " + _missiles + " missiles and " + _barrages +
-            " barrages, shot down " + _shotDown + " missiles.");
-        _shells = _missiles = _barrages = _shotDown = 0;
     }
 }
