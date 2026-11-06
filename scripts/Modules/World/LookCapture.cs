@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Numerics;
 using System.Reflection;
 using System.Text;
@@ -296,7 +296,7 @@ internal sealed class LookCapture : Module
         }
     }
 
-    private static string Value(object? v) => v switch
+    internal static string Value(object? v) => v switch
     {
         null => "None",
         bool b => b ? "true" : "false",
@@ -312,7 +312,7 @@ internal sealed class LookCapture : Module
     };
 
     // Small structs (colours, rotators, names) as (Field=value, ...).
-    private static string Members(object v)
+    internal static string Members(object v)
     {
         Type t = v.GetType();
         if (t.Name == "FName")

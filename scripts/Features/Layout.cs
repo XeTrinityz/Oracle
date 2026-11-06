@@ -144,13 +144,13 @@ internal static class Layout
         }),
         ("WORLD/ATMOSPHERE", new Section[]
         {
-            new("SCENE", "scene_look"),
+            new("SCENE", "pre_scarecrow_era", "scene_look", "dusk_sky"),
             new("LOOK", "atmosphere", "atmo_hue", "atmo_strength", "atmo_desat"),
             new("LIGHT", "fx_exposure", "fx_bloom"),
             new("FOG", "atmo_fog", "fx_fog_distance", "fx_fog_height"),
             new("LENS", "fx_motion_blur", "fx_grain", "fx_dof_focus", "fx_dof_blur"),
             new("SCREEN", "post_process"),
-            new("CAPTURE", "look_capture"),
+            new("CAPTURE", "look_capture", "era_snapshot"),
         }),
         ("WORLD/WEATHER", new Section[]
         {

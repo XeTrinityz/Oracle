@@ -158,6 +158,22 @@ internal sealed class Rain : Module
             Overlay.Notice("TOXIN RAIN", "NEEDS SCARECROW'S TOXIN CLOUD", false);
     }
 
+    private bool _eraSilence;
+
+    /// <summary>
+    /// PRE-SCARECROW ERA: silences every rain sound (the Wwise rain density, surface rain sounds and rain emitters)
+    /// without touching the rain volumes, which the era sets itself. The rain volume's own sound bed is the era's.
+    /// </summary>
+    public void SetEraSilence(bool on)
+    {
+        if (_eraSilence == on)
+            return;
+        _eraSilence = on;
+        _dirty = true;
+        if (!on)
+            Safe.Run("rain audio restore", RestoreAudio);
+    }
+
     public override void WorldChanged() => Forget();
 
     public override void LeftGame()
@@ -202,6 +218,17 @@ internal sealed class Rain : Module
 
         if (Vanilla)
         {
+            if (_eraSilence)
+            {
+                if (_dirty || _refresh.Elapsed(RefreshSeconds))
+                {
+                    _dirty = false;
+                    MuteAudio();
+                }
+
+                return;
+            }
+
             if (Changed)
                 Restore();
             return;
@@ -290,7 +317,7 @@ internal sealed class Rain : Module
             _written[key] = Read(v, rc, map);
         }
 
-        if (look.Sound)
+        if (look.Sound && !_eraSilence)
             RestoreAudio();
         else
             MuteAudio();

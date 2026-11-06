@@ -138,9 +138,20 @@ internal sealed class LookPresets : Module
         _choice.SetOptions(keys.ToArray(), labels.ToArray());
     }
 
+    private bool _era;
+
+    /// <summary>PRE-SCARECROW ERA forces the pre-Scarecrow look while on, whatever this row is set to.</summary>
+    public void SetEra(bool on)
+    {
+        if (_era == on)
+            return;
+        _era = on;
+        Pick();
+    }
+
     private void Pick()
     {
-        string key = _choice.CurrentKey;
+        string key = _era ? "pre_scarecrow" : _choice.CurrentKey;
         _look = key switch
         {
             "game" or "" => null,
@@ -151,7 +162,7 @@ internal sealed class LookPresets : Module
         _lut = null;
         _force = true;
 
-        if (_look != null && Atmosphere.I.Wanted)
+        if (_look != null && !_era && Atmosphere.I.Wanted)
             Overlay.Notice("SCENE LOOK", "SET SKY & FOG LOOK TO VANILLA", false);
     }
 
