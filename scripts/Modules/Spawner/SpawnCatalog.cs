@@ -113,7 +113,7 @@ internal static class SpawnCatalog
     // hang or break the beat they belong to.
     private static readonly string[] RefusedPawns = { "Boss", "Fake", "Tutorial", "Cinematic", "Ragdoll", "Prototype2D", "MechSuit" };
 
-    private static string GroupOf(string definePath, bool enemy)
+    public static string GroupOf(string definePath, bool enemy)
     {
         string[] parts = definePath.Split('.');
         string sub = parts.Length >= 3 ? parts[1] : "";

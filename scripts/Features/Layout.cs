@@ -45,6 +45,7 @@ internal static class Layout
             new("SWITCH", "play_as", "switch_character", "back_to_batman"),
             new("SUIT", "suit", "apply_suit", "cancel_suit"),
             new("APPEARANCE", "hide_cape", "batman_size", "battle_damage", "apply_battle_damage"),
+            new("DISGUISE", "disguise_look", "disguise_variant", "disguise", "disguise_wear"),
         }),
         ("PLAYER/PROGRESS", new Section[]
         {
