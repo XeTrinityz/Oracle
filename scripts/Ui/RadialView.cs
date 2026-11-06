@@ -768,18 +768,12 @@ internal static class RadialView
             _paths = new Dictionary<Feature, string>();
             foreach (MenuPage page in Catalog.Pages)
             {
-                foreach (MenuRow row in page.Rows)
+                foreach ((MenuPage leaf, string path) in page.Leaves())
                 {
-                    if (row.Item != null)
-                        _paths.TryAdd(row.Item, page.Title);
-                }
-
-                foreach (MenuPage child in page.Children)
-                {
-                    foreach (MenuRow row in child.Rows)
+                    foreach (MenuRow row in leaf.Rows)
                     {
                         if (row.Item != null)
-                            _paths.TryAdd(row.Item, page.Title + " / " + child.Title);
+                            _paths.TryAdd(row.Item, path);
                     }
                 }
             }

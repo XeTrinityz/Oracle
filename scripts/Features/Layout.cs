@@ -2,7 +2,8 @@ namespace CeZeY.Oracle;
 
 /// <summary>
 /// The whole menu in one place: every page, sub-tab, group and row, in display order. To move a feature, move
-/// its id here. "+id" repeats a row already placed on an earlier page. "PAGE/TAB" makes a sub-tab. Every page starts with a group header, so pages read alike. A registered
+/// its id here. "+id" repeats a row already placed on an earlier page. "PAGE/TAB" makes a sub-tab, and
+/// "PAGE/TAB/TAB" a tab inside a tab (WORLD > SPAWNER > OBJECTS). Every page starts with a group header, so pages read alike. A registered
 /// feature missing from this list still appears, on an OTHER page, so nothing can vanish.
 /// </summary>
 internal static class Layout
@@ -17,7 +18,6 @@ internal static class Layout
             new("ARMOUR", "full_armour", "restore_armour"),
             new("HITS", "no_stagger", "no_stuns"),
             new("STEALTH", "silent_running", "drone_invisible", "thug_invisible"),
-            new("DISPLAY", "status_readout"),
         }),
         ("PLAYER/COMBAT", new Section[]
         {
@@ -74,11 +74,6 @@ internal static class Layout
             new("PURSUIT MISSILE", "pursuit_instant_lock", "pursuit_full_hits", "pursuit_damage"),
             new("ON FOOT", "batmobile_takedown_ready"),
         }),
-        ("BATMOBILE/DASHBOARD", new Section[]
-        {
-            new("SPEEDOMETER", "batmobile_speedometer", "batmobile_speed_units", "batmobile_trip_stats", "batmobile_trip_reset"),
-            new("RADAR", "vehicle_radar_on_foot"),
-        }),
         ("BATMOBILE/SKIN", new Section[]
         {
             new("SHOWCASE SKINS", "batmobile_skin", "apply_batmobile_skin", "cancel_batmobile_skin"),
@@ -114,7 +109,7 @@ internal static class Layout
         ("TELEPORT/OPTIONS", new Section[]
         {
             new("ARRIVAL", "teleport_fade", "teleport_no_fade_range", "teleport_arrival_height", "teleport_face"),
-            new("POSITION", "teleport_coords", "teleport_log_position"),
+            new("POSITION", "teleport_log_position"),
         }),
         ("WORLD/ENEMIES", new Section[]
         {
@@ -140,7 +135,6 @@ internal static class Layout
             new("JOKER", "joker_city", "joker_thugs", "joker_sightings"),
             new("VEHICLES", "npc_flip_cars"),
             new("TIME", "game_speed"),
-            new("INFO", "city_threats", "city_threat_esp", "city_threat_esp_range", "npc_count"),
         }),
         ("WORLD/ATMOSPHERE", new Section[]
         {
@@ -174,48 +168,59 @@ internal static class Layout
             new("CHARACTERS", "ed_disarm", "ed_revive", "ed_turn"),
             new("UNDO", "ed_restore", "ed_restore_all"),
         }),
-        ("WORLD/ESP", new Section[]
-        {
-            new("SHOW", "esp_enemies", "esp_friendlies", "esp_vehicles", "esp_turrets", "esp_props", "esp_movers", "esp_pickups"),
-            new("STYLE", "esp_boxes", "esp_tracers", "esp_details", "esp_range", "esp_max"),
-        }),
-        ("SPAWNER/CHARACTERS", new Section[]
+        ("WORLD/SPAWNER/CHARACTERS", new Section[]
         {
             new("WHO", "chr_group", "chr_who", "chr_spawn", "spawn_copy", "chr_refresh"),
             new("HOW", "chr_side", "chr_behaviour", "chr_weapon", "chr_health", "chr_size"),
-            new("BODYGUARDS", "npc_guard_range", "npc_guard_gap", "npc_guard_keep_up", "npc_guard_hunted", "guard_markers"),
+            new("BODYGUARDS", "npc_guard_range", "npc_guard_gap", "npc_guard_keep_up", "npc_guard_hunted"),
             new("PLACE", "spawn_where", "spawn_distance", "spawn_count", "spawn_spread", "spawn_facing"),
         }),
-        ("SPAWNER/VEHICLES", new Section[]
+        ("WORLD/SPAWNER/VEHICLES", new Section[]
         {
             new("WHICH", "veh_group", "veh_who", "veh_spawn", "+spawn_copy", "veh_refresh"),
             new("HOW", "veh_side", "veh_behaviour", "veh_health"),
             new("PLACE", "+spawn_where", "+spawn_distance", "+spawn_count", "+spawn_spread", "+spawn_facing"),
         }),
-        ("SPAWNER/OBJECTS", new Section[]
+        ("WORLD/SPAWNER/OBJECTS", new Section[]
         {
             new("WHICH", "obj_source", "obj_filter", "obj_who", "obj_spawn", "obj_copy_aimed", "+spawn_copy", "obj_refresh"),
             new("HOW", "obj_physics", "obj_collision", "obj_size"),
             new("PLACE", "+spawn_where", "+spawn_distance", "+spawn_count", "+spawn_spread", "+spawn_facing"),
         }),
-        ("SPAWNER/WEAPONS", new Section[]
+        ("WORLD/SPAWNER/WEAPONS", new Section[]
         {
             new("WHICH", "wpn_who", "wpn_spawn", "wpn_give", "wpn_refresh"),
             new("PLACE", "+spawn_where", "+spawn_distance", "+spawn_count", "+spawn_spread", "+spawn_facing"),
         }),
-        ("SPAWNER/SPAWNED", new Section[]
+        ("WORLD/SPAWNER/SPAWNED", new Section[]
         {
             new("YOUR SPAWNS", "spawned_pick", "spawned_edit", "spawned_go", "spawned_delete"),
             new("CLEAN UP", "spawned_delete_last", "spawned_delete_all"),
             new("AUTOMATIC", "spawn_clear_fallen", "spawn_clear_after", "spawn_clear_far"),
             new("OPTIONS", "spawn_select_new", "spawn_max"),
         }),
+        ("HUD/ESP", new Section[]
+        {
+            new("SHOW", "esp_enemies", "esp_friendlies", "esp_vehicles", "esp_turrets", "esp_props", "esp_movers", "esp_pickups"),
+            new("MILITIA THREATS", "city_threat_esp", "city_threat_esp_range"),
+            new("BODYGUARDS", "guard_markers"),
+            new("STYLE", "esp_boxes", "esp_tracers", "esp_details", "esp_range", "esp_max"),
+        }),
+        ("HUD/OVERLAYS", new Section[]
+        {
+            new("YOU", "status_readout", "teleport_coords"),
+            new("CITY", "city_threats", "npc_count"),
+            new("SPEEDOMETER", "batmobile_speedometer", "batmobile_speed_units", "batmobile_trip_stats", "batmobile_trip_reset"),
+            new("CAMERA", "fov_readout"),
+            new("MENU", "active_list"),
+            new("GAME HUD", "vehicle_radar_on_foot"),
+        }),
         ("CAMERA/GENERAL", new Section[]
         {
             new("PRESETS", "fov_preset", "cam_reset"),
             new("FIELD OF VIEW", "fov_world", "fov_aim"),
             new("EFFECTS", "cam_steady", "cam_no_shake", "cam_no_collision", "cam_tilt"),
-            new("SCREEN", "cam_hide_hud", "cam_bars", "fov_readout"),
+            new("SCREEN", "cam_hide_hud", "cam_bars"),
         }),
         ("CAMERA/ON FOOT", new Section[]
         {
@@ -264,7 +269,7 @@ internal static class Layout
         }),
         ("SYSTEM/MENU", new Section[]
         {
-            new("APPEARANCE", "menu_size", "menu_position", "menu_color", "menu_font", "rainbow_speed", "menu_preview", "menu_effects", "low_end_mode", "active_list"),
+            new("APPEARANCE", "menu_size", "menu_position", "menu_color", "menu_font", "rainbow_speed", "menu_preview", "menu_effects", "low_end_mode"),
         }),
         ("SYSTEM/RADIAL", new Section[]
         {
@@ -287,28 +292,30 @@ internal static class Layout
         }),
     };
 
-    /// <summary>Creates a page. A path like "WORLD/ENEMIES" makes it a sub-tab of WORLD.</summary>
+    /// <summary>
+    /// Creates a page. A path like "WORLD/ENEMIES" makes it a tab of WORLD; "WORLD/SPAWNER/OBJECTS" makes it a tab
+    /// of WORLD's SPAWNER tab, which then lists its own tabs when opened. The menu handles no deeper than that.
+    /// </summary>
     private static MenuPage Place(string path)
     {
-        int slash = path.IndexOf('/');
-        if (slash < 0)
+        string[] parts = path.Split('/');
+        List<MenuPage> siblings = Catalog.Pages;
+        MenuPage? page = null;
+        for (int i = 0; i < parts.Length; i++)
         {
-            var top = new MenuPage { Title = path };
-            Catalog.Pages.Add(top);
-            return top;
+            // Every part but the last is reused when an earlier entry made it; the last is always a new page.
+            MenuPage? found = i < parts.Length - 1 ? siblings.Find(p => p.Title == parts[i]) : null;
+            if (found == null)
+            {
+                found = new MenuPage { Title = parts[i] };
+                siblings.Add(found);
+            }
+
+            page = found;
+            siblings = found.Children;
         }
 
-        string parentTitle = path.Substring(0, slash);
-        MenuPage? parent = Catalog.Pages.Find(p => p.Title == parentTitle);
-        if (parent == null)
-        {
-            parent = new MenuPage { Title = parentTitle };
-            Catalog.Pages.Add(parent);
-        }
-
-        var child = new MenuPage { Title = path.Substring(slash + 1) };
-        parent.Children.Add(child);
-        return child;
+        return page!;
     }
 
     /// <summary>Builds the menu pages from the registered features.</summary>

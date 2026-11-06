@@ -16,7 +16,7 @@ internal enum SpawnKind
 }
 
 /// <summary>
-/// SPAWNER: puts new characters, vehicles, objects and weapons into the world. Everything is built the way the game
+/// WORLD > SPAWNER: puts new characters, vehicles, objects and weapons into the world. Everything is built the way the game
 /// builds its own (the population manager's SpawnPawn, archetype spawns, the weapon drop a disarm leaves), from what
 /// the game has loaded right now, so nothing is spawned that the area can't draw. Every spawn is tracked: the SPAWNED
 /// tab lists them, hands one to the world editor, and deletes them. Nothing the game placed is ever deleted here.
@@ -131,10 +131,11 @@ internal sealed partial class Spawner : Module
 
     public override void Shutdown() => Safe.Run("spawner cleanup", () => DeleteWhere(_ => true));
 
+    /// <summary>The WORLD tab that holds the spawner's own tabs.</summary>
     public const string PageTitle = "SPAWNER";
 
-    /// <summary>The menu is showing one of the SPAWNER tabs, so its lists should be current.</summary>
-    private static bool Showing => Menu.IsOpen && !Menu.Searching && Menu.Top.Title == PageTitle;
+    /// <summary>The player has opened WORLD > SPAWNER, so the tab they're on should have its list current.</summary>
+    private static bool Showing => Menu.IsOpen && !Menu.Searching && Menu.TabOwner.Title == PageTitle;
 
     public override void MenuOpening()
     {

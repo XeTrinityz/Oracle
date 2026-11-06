@@ -7,7 +7,7 @@ using static CeZeY.Oracle.Catalog;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// SPAWNER/OBJECTS. Any static mesh in memory becomes an object: a KActorSpawnable when it should fall and be knocked
+/// WORLD/SPAWNER/OBJECTS. Any static mesh in memory becomes an object: a KActorSpawnable when it should fall and be knocked
 /// about, a DynamicSMActor_Spawnable (what PRE-SCARECROW ERA's sky uses) when it should stay put. A mesh with no
 /// collision shape can't be a physics object; one that drops through the floor is caught and held where it spawned.
 /// </summary>

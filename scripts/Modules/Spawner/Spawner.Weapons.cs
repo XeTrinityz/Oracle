@@ -7,7 +7,7 @@ using static CeZeY.Oracle.Catalog;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// SPAWNER/WEAPONS. A weapon on the floor is the RBMCombatThrownObject a disarm leaves: the weapon is spawned, asked
+/// WORLD/SPAWNER/WEAPONS. A weapon on the floor is the RBMCombatThrownObject a disarm leaves: the weapon is spawned, asked
 /// for its dropped form (RBMWeapon.CreateDroppedWeapon, what the game calls when a thug loses it), then removed, so
 /// only the pickup remains. Thugs pick these up and fight with them. A weapon can also go straight into a character's
 /// hands with RBMPawnAI.SpawnWeapon, the call the game's lockers and RSeqAct_GiveWeapon use.

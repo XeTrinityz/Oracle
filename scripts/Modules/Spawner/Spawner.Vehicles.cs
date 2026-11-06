@@ -7,7 +7,7 @@ using static CeZeY.Oracle.Catalog;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// SPAWNER/VEHICLES. A vehicle is spawned from its archetype, as RPawnPlayer.SpawnChaseCar and
+/// WORLD/SPAWNER/VEHICLES. A vehicle is spawned from its archetype, as RPawnPlayer.SpawnChaseCar and
 /// RGameInfo.SpawnBatmobile do (Spawn(archetype.Class, ..., archetype)), then given a behaviour the way the chase
 /// car is (GotoBehaviourClass) or the combat manager's own entry points (GotoCombatBehaviour, GotoGuardBehaviour).
 /// </summary>

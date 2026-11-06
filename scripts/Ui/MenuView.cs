@@ -86,7 +86,7 @@ internal static class MenuView
     private static float _pageAge;
     private static float _menuIn;
 
-    /// <summary>Age of the tab list, which only animates in when the top page changes, not on every tab.</summary>
+    /// <summary>Age of the tab list, which only animates in when the page whose tabs it lists changes, not on every tab.</summary>
     private static float _tabsAge;
     private static MenuPage? _tabsOf;
 
@@ -103,7 +103,7 @@ internal static class MenuView
         _openAge = 0f;
         _pageAge = 0f;
         _tabsAge = 0f;
-        _tabsOf = Menu.Top;
+        _tabsOf = Menu.TabOwner;
     }
 
     /// <summary>A new page: the scroll jumps straight to the selected row, and the title and rows animate in.</summary>
@@ -181,11 +181,11 @@ internal static class MenuView
             float step = Dt * 8f;
             bool showSub = ShowSub;
             bool showCol = ShowColumn;
-            if (showSub && (_sub <= 0f || Menu.Top != _tabsOf))
+            if (showSub && (_sub <= 0f || Menu.TabOwner != _tabsOf))
                 _tabsAge = 0f;
             if (showCol && _col <= 0f)
                 _pageAge = 0f;
-            _tabsOf = Menu.Top;
+            _tabsOf = Menu.TabOwner;
             _sub = Toward(_sub, showSub ? 1f : 0f, step);
             _col = Toward(_col, showCol ? 1f : 0f, step);
             _focus = Toward(_focus, Menu.InRows ? 1f : 0f, step);
@@ -515,7 +515,7 @@ internal static class MenuView
 
     private static void DrawSubTabs(float x, float y, float h, Rgba accent)
     {
-        MenuPage top = Menu.Top;
+        MenuPage top = Menu.TabOwner;
         float w = S(SubW);
         float rowH = S(TabH);
         Backing(x, y, w, h, accent);
@@ -539,8 +539,15 @@ internal static class MenuView
             float rowAlpha = Alpha;
             Alpha *= inAt;
             TextMid(x + S(Inset) - S(12) * (1f - inAt), cy, page.Title, on ? Theme.Hi : Theme.Mid, LabelScale);
+            float countRight = x + w - S(Inset);
+            if (page.HasSub)
+            {
+                // A tab with its own tabs gets a chevron at the edge, since ENTER lists those instead of opening rows.
+                Chevron(countRight, cy, on ? Theme.Hi : Theme.Mid);
+                countRight -= S(ChevronW + 8f);
+            }
             if (page.ActiveCount > 0)
-                TextRight(x + w - S(Inset), cy, page.ActiveCount.ToString(), on ? accent : Theme.Low, SmallScale);
+                TextRight(countRight, cy, page.ActiveCount.ToString(), on ? accent : Theme.Low, SmallScale);
             Alpha = rowAlpha;
         }
 
@@ -549,6 +556,21 @@ internal static class MenuView
         Alpha *= appear;
         DrawRunningHere(top, x, w, rows + rowH * top.Children.Count + S(10) + S(12) * (1f - appear), y + h - S(14), accent);
         Alpha = outer;
+    }
+
+    private const float ChevronW = 5f;
+
+    /// <summary>A thin right-pointing chevron ending at <paramref name="right"/>, centred on <paramref name="cy"/>.</summary>
+    private static void Chevron(float right, float cy, Rgba col)
+    {
+        float w = S(ChevronW);
+        float h = S(5f);
+        float t = S(1.5f);
+        Rgba under = Shapes.Under;
+        Shapes.Under = Theme.Panel;
+        Shapes.Line(right - w, cy - h, right, cy, t, col, 1f);
+        Shapes.Line(right, cy, right - w, cy + h, t, col, 1f);
+        Shapes.Under = under;
     }
 
     private static readonly List<Feature> _running = new();
@@ -568,7 +590,7 @@ internal static class MenuView
         _running.Clear();
         _seen.Clear();
         int total = 0;
-        foreach (MenuPage tab in top.Children)
+        foreach ((MenuPage tab, _) in top.Leaves())
         {
             foreach (MenuRow row in tab.Rows)
             {

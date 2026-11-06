@@ -21,6 +21,26 @@ internal sealed class MenuPage
 
     public bool HasSub => Children.Count > 0;
 
+    /// <summary>
+    /// The pages under this one that hold rows, with their path from here: a tab, or the tabs of a tab that has its
+    /// own (WORLD / SPAWNER / OBJECTS). A page with no tabs is its own only leaf.
+    /// </summary>
+    public IEnumerable<(MenuPage Page, string Path)> Leaves(string path = "")
+    {
+        path = path.Length == 0 ? Title : path + " / " + Title;
+        if (!HasSub)
+        {
+            yield return (this, path);
+            yield break;
+        }
+
+        foreach (MenuPage child in Children)
+        {
+            foreach ((MenuPage, string) leaf in child.Leaves(path))
+                yield return leaf;
+        }
+    }
+
     public int ActiveCount
     {
         get

@@ -7,7 +7,7 @@ using static CeZeY.Oracle.Catalog;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// SPAWNER/CHARACTERS. Characters are built by the population manager's SpawnPawn, the call the game's street
+/// WORLD/SPAWNER/CHARACTERS. Characters are built by the population manager's SpawnPawn, the call the game's street
 /// population uses: pawn class, character define and character type in, a pawn with its AI controller out. The
 /// recipes are read from what's loaded (see <see cref="SpawnCatalog.Characters"/>), so the list follows where you are.
 /// </summary>

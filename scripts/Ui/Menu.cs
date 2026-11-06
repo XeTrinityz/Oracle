@@ -33,7 +33,7 @@ internal static class Menu
 
     private static nint _inputPc;
     private static float _confirmLeft;
-    private static (int Page, int Sub, int Row, int Level) _beforeSearch;
+    private static (int Page, int Sub, int Group, int Row, int Level) _beforeSearch;
 
     private readonly record struct SearchEntry(Feature Item, string Path, string Label, string Words, string Help);
 
@@ -44,6 +44,9 @@ internal static class Menu
     public static int RowIndex { get; private set; }
 
     public static int SubIndex { get; private set; }
+
+    /// <summary>Index in the top page's tabs of the opened tab whose own tabs are listed, or -1. See TabOwner.</summary>
+    private static int _group = -1;
 
     /// <summary>How deep the player is: 0 on the page list, 1 on a page's sub-tabs, 2 on the rows.</summary>
     public static int Level { get; private set; }
@@ -59,8 +62,24 @@ internal static class Menu
 
     public static MenuPage Top => PageAt(PageIndex);
 
-    /// <summary>The page whose rows show in the column: the search results while searching.</summary>
-    public static MenuPage Current => Searching ? _searchPage : Top.HasSub ? Top.Children[Math.Clamp(SubIndex, 0, Top.Children.Count - 1)] : Top;
+    /// <summary>
+    /// The page whose tabs the tab column lists: the top page, or a tab of it that has its own tabs once the player
+    /// opens it (WORLD > SPAWNER). Only one level of these is supported.
+    /// </summary>
+    public static MenuPage TabOwner =>
+        Top.HasSub && _group >= 0 && _group < Top.Children.Count && Top.Children[_group].HasSub ? Top.Children[_group] : Top;
+
+    /// <summary>The tab column is showing the tabs of a tab, so BACK returns to the top page's tabs.</summary>
+    public static bool InGroup => TabOwner != Top;
+
+    /// <summary>The tab under the cursor in the tab column.</summary>
+    private static MenuPage HoveredTab => TabOwner.Children[Math.Clamp(SubIndex, 0, TabOwner.Children.Count - 1)];
+
+    /// <summary>
+    /// The page whose rows show in the column: the search results while searching. A tab with its own tabs, not
+    /// yet opened, previews its first.
+    /// </summary>
+    public static MenuPage Current => Searching ? _searchPage : !Top.HasSub ? Top : HoveredTab.HasSub ? HoveredTab.Children[0] : HoveredTab;
 
     public static bool IsActivePage(MenuPage page) => page == _activePage;
 
@@ -361,6 +380,16 @@ internal static class Menu
                     Level = 1;
                     RowIndex = Recall();
                 }
+                else if (Level == 1 && !InGroup && HoveredTab.HasSub)
+                {
+                    // A tab with its own tabs: the tab column now lists those, and BACK comes out again.
+                    Remember();
+                    _group = SubIndex;
+                    SubIndex = 0;
+                    RowIndex = Recall();
+                    Confirming = null;
+                    MenuView.PageTurned();
+                }
                 else if (Selected != null)
                 {
                     Level = 2;
@@ -383,11 +412,23 @@ internal static class Menu
         return false;
     }
 
-    /// <summary>Steps back one level: rows to sub-tabs (when the page has them) to the page list. A search just ends.</summary>
+    /// <summary>
+    /// Steps back one level: rows to sub-tabs (when the page has them), a tab's own tabs to the page's tabs, then to
+    /// the page list. A search just ends.
+    /// </summary>
     private static void GoBack()
     {
         if (Searching)
             EndSearch();
+        else if (Level == 1 && InGroup)
+        {
+            Remember();
+            SubIndex = _group;
+            _group = -1;
+            RowIndex = Recall();
+            Confirming = null;
+            MenuView.PageTurned();
+        }
         else
             Level = Level == 2 && Top.HasSub ? 1 : 0;
     }
@@ -477,13 +518,14 @@ internal static class Menu
         Remember();
         if (Level > 0 && Top.HasSub)
         {
-            int count = Top.Children.Count;
+            int count = TabOwner.Children.Count;
             SubIndex = (SubIndex + delta + count) % count;
         }
         else
         {
             PageIndex = (PageIndex + delta + PageCount) % PageCount;
             SubIndex = 0;
+            _group = -1;
             if (PageIndex == 0)
                 RebuildActivePage();
             if (Level == 2 && Top.HasSub)
@@ -507,17 +549,7 @@ internal static class Menu
     private static int Recall() =>
         _rowMemory.TryGetValue(Current, out int row) && row < Rows.Count && Rows[row].Item != null ? row : NextRow(-1, 1);
 
-    private static IEnumerable<(MenuPage Page, string Path)> Leaves()
-    {
-        foreach (MenuPage page in Catalog.Pages)
-        {
-            if (!page.HasSub)
-                yield return (page, page.Title);
-
-            foreach (MenuPage child in page.Children)
-                yield return (child, page.Title + " / " + child.Title);
-        }
-    }
+    private static IEnumerable<(MenuPage Page, string Path)> Leaves() => Catalog.Pages.SelectMany(p => p.Leaves());
 
     private static void RebuildActivePage()
     {
@@ -595,7 +627,7 @@ internal static class Menu
         if (!Searching)
         {
             Remember();
-            _beforeSearch = (PageIndex, SubIndex, RowIndex, Level);
+            _beforeSearch = (PageIndex, SubIndex, _group, RowIndex, Level);
             BuildIndex();
             Query = "";
             Level = 2;
@@ -639,7 +671,7 @@ internal static class Menu
     {
         Query = null;
         _searchPage.Rows.Clear();
-        (PageIndex, SubIndex, RowIndex, Level) = _beforeSearch;
+        (PageIndex, SubIndex, _group, RowIndex, Level) = _beforeSearch;
         PageIndex = Math.Clamp(PageIndex, 0, PageCount - 1);
         if (RowIndex >= Rows.Count || Rows[RowIndex].Item == null)
             RowIndex = NextRow(-1, 1);

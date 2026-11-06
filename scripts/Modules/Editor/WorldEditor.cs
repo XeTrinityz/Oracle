@@ -8,7 +8,7 @@ using static CeZeY.Oracle.Catalog;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// WORLD/EDITOR and WORLD/ESP: marks objects in the world (ESP), selects one, and edits it. Every edit is journalled in
+/// WORLD/EDITOR and HUD/ESP: marks objects in the world (ESP), selects one, and edits it. Every edit is journalled in
 /// <see cref="Edits"/>, so RESTORE puts it back, and REMOVE only hides: nothing is ever destroyed except through
 /// the game's own damage (DESTROY), the same way the player could. The editor rows show the selected
 /// object's state, so they are never saved.
