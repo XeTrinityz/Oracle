@@ -93,6 +93,7 @@ internal static class Overlay
         if (!Begin(canvas, out Font? font))
             return;
 
+        Hud.BeginFrame();
         try
         {
             if (Fader.Level > 0f)
@@ -195,57 +196,90 @@ internal static class Overlay
         Sprite(strip, cx - size * 0.5f, cy - size * 0.5f, size, size, frame * strip.SizeY, 0f, strip.SizeY, strip.SizeY, tint, level);
     }
 
+    private const int MaxRunningRows = 14;
+    private static readonly List<(string Name, string State)> _running = new();
+
+    /// <summary>
+    /// RUNNING: what's switched on, as a card at the top of the right dock. Each row carries the menu's running tick,
+    /// with a setting's value on the right, and the rows cascade in after the card.
+    /// </summary>
     private static void DrawRunningList()
     {
         Alpha = 1f;
-        const float scale = 0.72f;
-        float lh = S(21);
-        var names = new List<string>();
-        float w = TextW("ORACLE", scale) + S(30);
+        _running.Clear();
         foreach (Feature f in Catalog.All)
         {
-            if (!f.Active)
-                continue;
-
-            string name = f is Toggle ? f.Label : f.Label + "  " + f.State;
-            names.Add(name);
-            w = Math.Max(w, TextW(name, scale) + S(34));
+            if (f.Active)
+                _running.Add((f.Label, f is Toggle ? "" : f.State));
         }
 
-        float x = Gfx.W - w - S(24);
-        float y = S(150);
-        float h = S(32) + names.Count * lh + S(8);
-        Rect(x, y, w, h, Theme.Panel, 0.75f);
-        Rect(x + w - S(2), y, S(2), h, Theme.Accent, 0.9f);
-        Text(x + S(12), y + S(9), "ORACLE", Theme.Accent, scale);
-        float ly = y + S(32);
-        foreach (string n in names)
+        if (_running.Count == 0)
+            return;
+
+        float ls = Hud.Sc(Hud.BodyScale), ss = Hud.Sc(Hud.SmallScale);
+        int shown = Math.Min(_running.Count, MaxRunningRows);
+        int more = _running.Count - shown;
+        float w = Hud.U(190);
+        for (int i = 0; i < shown; i++)
         {
-            Rect(x + S(12), ly + lh * 0.5f - S(2), S(4), S(4), Theme.Accent, 0.8f);
-            TextMid(x + S(22), ly + lh * 0.5f, n, Theme.Mid, scale);
-            ly += lh;
+            (string name, string state) = _running[i];
+            w = Math.Max(w, TextW(name, ls) + (state.Length > 0 ? TextW(state, ss) + Hud.U(14) : 0f) + Hud.U(Hud.Pad) * 2f + Hud.U(10));
         }
+
+        float lh = Hud.U(19);
+        float h = Hud.Height(lh * (shown + (more > 0 ? 1 : 0)) - Hud.U(4));
+        var (x, y, age) = Hud.Place("running", Hud.Side.Right, 0, w, h);
+        float top = Hud.Card(x, y, w, h, "RUNNING", _running.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), Theme.Accent, age);
+
+        float card = Alpha;
+        float left = x + Hud.U(Hud.Pad), right = x + w - Hud.U(Hud.Pad);
+        for (int i = 0; i < shown; i++)
+        {
+            (string name, string state) = _running[i];
+            Alpha = card * (MenuView.Effects ? Ease.Out(Math.Clamp((age - 0.1f - i * 0.035f) / 0.2f, 0f, 1f)) : 1f);
+            float cy = top + lh * i + lh * 0.5f - Hud.U(2);
+            Rect(left, cy - lh * 0.5f + Hud.U(4), MathF.Max(2f, Hud.U(2)), lh - Hud.U(8), Theme.Accent, 0.8f);
+            TextMid(left + Hud.U(10), cy + Hud.U(0.5f), name, Theme.Mid, ls);
+            if (state.Length > 0)
+                TextRight(right, cy + Hud.U(0.5f), state, Theme.Accent, ss);
+        }
+
+        Alpha = card;
+        if (more > 0)
+            TextMid(left + Hud.U(10), top + lh * shown + lh * 0.5f - Hud.U(2), "+" + more + " MORE", Theme.Low, ss);
     }
 
+    /// <summary>
+    /// A toast or notice: a small card at the top of the screen in the menu's style, the title tracked and the new
+    /// state in a chip, solid in the menu colour when something turned on.
+    /// </summary>
     private static void DrawToast()
     {
         Alpha = Ease.Out(Math.Min(1f, _toastLeft / 0.3f) * Math.Min(1f, (_toastLength - _toastLeft) / 0.15f));
+        float age = _toastLength - _toastLeft;
 
-        const float scale = 0.9f;
         Rgba col = _toastOn ? Theme.Accent : Theme.Low;
-        float tw = TextW(_toastTitle, scale);
-        float sw = TextW(_toastState, scale);
-        float w = tw + sw + S(64);
-        float h = S(40);
-        float x = (Gfx.W - w) * 0.5f;
-        float y = S(150) - S(10) * (1f - Alpha);
+        float ts = Hud.Sc(0.78f);
+        float spacing = 1.2f * Hud.Size;
+        float tw = TextW(_toastTitle, ts) + (Theme.LowEnd ? 0f : _toastTitle.Length * S(spacing));
+        string state = MenuView.Decode(_toastState, age);
+        float cw = Hud.ChipW(_toastState);
+        float pad = Hud.U(16);
+        float w = pad + tw + Hud.U(14) + cw + pad;
+        float h = Hud.U(40);
+        float x = MathF.Round((Gfx.W - w) * 0.5f);
+        float y = MathF.Round(S(150) - Hud.U(10) * (1f - Alpha));
 
-        Rect(x + S(4), y + S(5), w, h, Theme.Black, 0.3f);
-        Rect(x, y, w, h, Theme.Panel);
-        Rect(x, y, S(3), h, col);
-        Rect(x, y, w, S(1), col, 0.5f);
-        TextMid(x + S(22), y + h * 0.5f, _toastTitle, Theme.Hi, scale);
-        TextMid(x + S(22) + tw + S(20), y + h * 0.5f, _toastState, col, scale);
+        Rect(x + Hud.U(3), y + Hud.U(4), w, h, Theme.Black, 0.3f);
+        Rect(x, y, w, h, Theme.Panel, 0.92f);
+        Rect(x, y, w, MathF.Max(1f, S(1)), col, 0.8f);
+        Hud.Brackets(x, y, w, h, col);
+        Hud.Tracked(x + pad, y + (h - TextH(ts)) * 0.5f + Hud.U(1), _toastTitle, Theme.Hi, ts, spacing);
+        float cx = x + pad + tw + Hud.U(14);
+        if (_toastOn)
+            Hud.Chip(cx, y + h * 0.5f, state, col, 1f, Theme.Black);
+        else
+            Hud.Chip(cx, y + h * 0.5f, state, col, 0.1f);
     }
 }
 

@@ -429,6 +429,12 @@ internal sealed partial class Batmobile : Module
         });
     }
 
+    private const float DialR = 56f;
+
+    /// <summary>
+    /// The speedometer: a dial that sweeps with speed (orange while boosting), the number in its middle, and health
+    /// and weapon power as meters beneath.
+    /// </summary>
     public override void Draw(Canvas c)
     {
         if (World.Pawn is not RVehicleBatmobileBase vehicle)
@@ -436,33 +442,81 @@ internal sealed partial class Batmobile : Module
 
         float speed = vehicle.Velocity.Length();
         float mph = speed * UnitsToMph;
-        string value = Speed(speed);
         bool boosting = Safe.Try("boost state", vehicle.IsBoosting);
 
-        const float width = 196f;
-        float height = _stats.On ? 118f : 100f;
-        float x = Gfx.W - Gfx.S(width) - Gfx.S(28f);
-        float y = Gfx.H - Gfx.S(height) - Gfx.S(48f);
-        Gfx.Panel(x, y, Gfx.S(width), Gfx.S(height));
-
-        float cx = x + Gfx.S(width * 0.5f);
+        float r = Hud.U(DialR);
+        float meters = (Hud.CaptionH + Hud.U(4)) * 2f + Hud.U(8);
+        float stats = _stats.On ? Hud.U(8) + Gfx.TextH(Hud.Sc(Hud.SmallScale)) : 0f;
+        float body = r * 2f - Hud.U(8) + Hud.U(6) + meters + stats;
+        float w = Hud.U(250);
+        float h = Hud.Height(body);
+        var (x, y, age) = Hud.Place("speedometer", Hud.Side.BottomRight, 1, w, h);
         string title = Piloting ? AutopilotTitle(vehicle) : boosting ? "BOOST" : "BATMOBILE";
-        Gfx.TextCentre(cx, y + Gfx.S(9f), title, Piloting || boosting ? Theme.Accent : Theme.Mid, 0.66f);
-        Gfx.TextCentre(cx, y + Gfx.S(28f), value, Theme.Hi, 1.15f);
+        float top = Hud.Card(x, y, w, h, title, _units.Index == 1 ? "KM/H" : "MPH", Theme.Low, age, boosting ? Theme.Signal : null);
 
-        float barX = x + Gfx.S(14f);
-        float barW = Gfx.S(width - 28f);
-        Bar(barX, y + Gfx.S(60f), barW, Gfx.S(3f), mph / GaugeMaxMph, null);
+        float cx = x + w * 0.5f, cy = top + r;
+        Dial(cx, cy, r, mph / GaugeMaxMph, boosting);
+        string value = MathF.Round(speed * (_units.Index == 1 ? UnitsToKmh : UnitsToMph)).ToString(CultureInfo.InvariantCulture);
+        float vs = Hud.Sc(1.3f);
+        Gfx.TextCentre(cx, cy - Gfx.TextH(vs) * 0.6f, value, Theme.Hi, vs);
+        Gfx.TextCentre(cx, cy + Gfx.TextH(vs) * 0.42f, _units.Index == 1 ? "KM/H" : "MPH", Theme.Low, Hud.Sc(Hud.SmallScale));
+
+        float left = x + Hud.U(Hud.Pad), inner = w - Hud.U(Hud.Pad) * 2f;
+        float my = top + r * 2f - Hud.U(8) + Hud.U(6);
         float maxHealth = MathF.Max(_maxHealth, vehicle.HealthMax + ArmourBonus(vehicle));
         float maxPower = MaxPower(vehicle);
-        Bar(barX, y + Gfx.S(72f), barW, Gfx.S(5f), maxHealth > 0f ? vehicle.Health / maxHealth : 0f, "HP");
-        Bar(barX, y + Gfx.S(86f), barW, Gfx.S(5f), maxPower > 0f ? vehicle.WeaponGeneratorPower / maxPower : 0f, "PWR");
+        float hp = maxHealth > 0f ? vehicle.Health / maxHealth : 0f;
+        Hud.Caption(left, my, inner, "ARMOUR", Percent(hp), Theme.Mid);
+        my += Hud.CaptionH;
+        Lens.Meter(left, my, inner, Hud.U(4), hp, Lens.Trail(vehicle.Ptr, hp), Theme.Accent, 10);
+        my += Hud.U(4) + Hud.U(8);
+        float pwr = maxPower > 0f ? vehicle.WeaponGeneratorPower / maxPower : 0f;
+        Hud.Caption(left, my, inner, "WEAPON POWER", Percent(pwr), Theme.Mid);
+        my += Hud.CaptionH;
+        Lens.Meter(left, my, inner, Hud.U(4), pwr, 0f, Rgba.Mix(Theme.Accent, Theme.White, 0.35f), 10);
+        my += Hud.U(4);
 
         if (_stats.On)
         {
             string jump = _bestAir <= 0f ? "-" : _bestAir.ToString("0.0", CultureInfo.InvariantCulture) + " S " + MathF.Round(_bestAirDistance / 100f).ToString(CultureInfo.InvariantCulture) + " M";
-            Gfx.TextCentre(cx, y + Gfx.S(100f), "BEST " + Speed(_bestSpeed) + "   JUMP " + jump, Theme.Mid, 0.56f);
+            Gfx.TextCentre(cx, my + Hud.U(8), "BEST " + Speed(_bestSpeed) + "   JUMP " + jump, Theme.Mid, Hud.Sc(Hud.SmallScale));
         }
+    }
+
+    private static string Percent(float f) => MathF.Round(Math.Clamp(float.IsFinite(f) ? f : 0f, 0f, 9.99f) * 100f).ToString(CultureInfo.InvariantCulture) + "%";
+
+    /// <summary>
+    /// A 270 degree dial open at the bottom: a faint track, the speed sweeping round it with a bright head, and ticks
+    /// every tenth. Shapes over the card blend with its glass, since DrawTris draws solid.
+    /// </summary>
+    private static void Dial(float cx, float cy, float r, float frac, bool hot)
+    {
+        Rgba under = Shapes.Under;
+        Shapes.Under = Theme.Panel;
+        float band = Hud.U(6);
+        Rgba col = hot ? Theme.Signal : Theme.Accent;
+        frac = float.IsFinite(frac) ? Math.Clamp(frac, 0f, 1f) : 0f;
+
+        Shapes.Arc(cx, cy, r - band, r, 135f, 405f, Theme.White, 0.09f);
+        float end = 135f + 270f * frac;
+        if (end > 135.5f)
+        {
+            Shapes.Arc(cx, cy, r - band, r, 135f, end, col, 0.95f);
+            Shapes.Arc(cx, cy, r - band - Hud.U(2), r + Hud.U(2), MathF.Max(135f, end - 5f), end, Rgba.Mix(col, Theme.White, 0.55f), 1f);
+        }
+
+        float t = MathF.Max(1f, Gfx.S(1.5f));
+        for (int i = 0; i <= 10; i++)
+        {
+            float a = (135f + 27f * i) * MathF.PI / 180f;
+            float c = MathF.Cos(a), s = MathF.Sin(a);
+            float r0 = r - band - Hud.U(i % 5 == 0 ? 10 : 7), r1 = r - band - Hud.U(3);
+            Shapes.QueueLine(cx + c * r0, cy + s * r0, cx + c * r1, cy + s * r1, t);
+        }
+
+        Shapes.FlushLines(Rgba.Mix(Theme.Panel, Theme.Mid, 0.6f));
+        Shapes.Ring(cx, cy, r - band - Hud.U(15), r - band - Hud.U(14), col, 0.18f);
+        Shapes.Under = under;
     }
 
     /// <summary>A speed in units per second, in the chosen speedometer unit.</summary>
@@ -470,19 +524,5 @@ internal sealed partial class Batmobile : Module
     {
         bool kmh = _units.Index == 1;
         return MathF.Round(unitsPerSecond * (kmh ? UnitsToKmh : UnitsToMph)).ToString(CultureInfo.InvariantCulture) + (kmh ? " KM/H" : " MPH");
-    }
-
-    private static void Bar(float x, float y, float w, float h, float fraction, string? label)
-    {
-        if (label != null)
-        {
-            Gfx.TextMid(x, y + h * 0.5f, label, Theme.Mid, 0.56f);
-            x += Gfx.S(30f);
-            w -= Gfx.S(30f);
-        }
-
-        Gfx.Rect(x, y, w, h, Theme.Mid, 0.25f);
-        fraction = float.IsNaN(fraction) ? 0f : Math.Clamp(fraction, 0f, 1f);
-        Gfx.Rect(x, y, w * fraction, h, Theme.Accent, 0.95f);
     }
 }

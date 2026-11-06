@@ -14,6 +14,8 @@ internal sealed class SystemPage : Module
             Fmt.Tenths, v => Settings.ApplyDelay = v).Setting();
 
         AddToggle("active_list", "ACTIVE CHEATS LIST", "Shows a small list of running cheats in the corner while you play.", on => Overlay.ShowRunningList = on).Setting();
+        AddSlider("overlay_size", "OVERLAY SIZE", "How large Oracle's on-screen cards are drawn: readouts, the speedometer, the running list, key guides and pop-ups.",
+            1f, 0.7f, 1.5f, 0.05f, 1.2f, Fmt.Percent, v => Hud.Size = Math.Clamp(v, 0.5f, 2f)).Setting();
 
         AddSlider("menu_size", "MENU SIZE", "How large the menu is drawn.", 0.75f, 0.5f, 1.5f, 0.05f, 0.75f, Fmt.Percent, v => Theme.MenuSize = v).Setting();
         Choice color = AddChoice("menu_color", "MENU COLOUR", "Colour of the Oracle menu, pop-ups and teleport screen. RAINBOW cycles through every colour.", Theme.Keys, Theme.Names, i => Theme.Index = i).Setting();

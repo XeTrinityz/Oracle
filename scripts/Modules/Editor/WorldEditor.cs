@@ -130,9 +130,14 @@ internal sealed partial class WorldEditor : Module
         for (int i = 0; i < Things.KindCount; i++)
             _show[i] = AddToggle(ids[i], "SHOW " + Things.Plural[i], help[i]);
 
-        _boxes = AddToggle("esp_boxes", "BOXES", "Draws a box around each marked object.", on: true).Pref();
-        _tracers = AddToggle("esp_tracers", "TRACERS", "Draws a line from the top of the screen to each marked object.").Pref();
-        _details = AddToggle("esp_details", "DETAILS", "Shows distance and health under each name, for objects within 60 m.", on: true).Pref();
+        _boxes = AddToggle("esp_boxes", "BOXES", "Frames each marked object with corner brackets. Off, each gets a diamond above it instead.", on: true).Pref();
+        _tracers = AddToggle("esp_tracers", "TRACERS", "Draws a thin line from the top of the screen to each marked object.").Pref();
+        _details = AddToggle("esp_details", "DETAILS", "Puts the distance on each name plate, and a health meter on the ones close by.", on: true).Pref();
+        AddToggle("esp_aim_card", "AIM CARD", "Whatever ESP marker is nearest the middle of the screen gets a lock and a card with its details. Off, aiming at a marker shows nothing extra.",
+            on => Lens.Cards = on, on: true).Pref();
+        AddChoice("esp_labels", "LABELS", "Name plates on ESP markers. OFF: markers only. NEAR: names within about 60 m (further for militia threats), with health close up. ALL: on every marker. AIM CARD is separate: it shows a full card for whatever you aim at.",
+            new[] { "off", "near", "all" }, new[] { "OFF", "NEAR", "ALL" }, i => Lens.Labels = (Lens.LabelMode)Math.Clamp(i, 0, 2)).Pref();
+        AddSlider("esp_size", "MARKER SIZE", "Scales every ESP marker, name plate and card.", 1f, 0.7f, 1.6f, 0.1f, 1.3f, Fmt.Times, v => Lens.Size = Math.Clamp(v, 0.5f, 2f)).Pref();
         _range = AddSlider("esp_range", "RANGE", "How far away the editor sees objects, for marking them and for the SELECTED list.", 100f, 10f, 500f, 10f, 250f, Fmt.Metres).Pref();
         _max = AddSlider("esp_max", "MOST SHOWN", "The most objects marked at once, nearest first. Fewer is lighter on a slow PC.", 60f, 10f, 200f, 10f, 120f, Fmt.Count).Pref();
 
@@ -287,6 +292,9 @@ internal sealed partial class WorldEditor : Module
     public override void Draw(Canvas c) => EditorView.Draw(this, c);
 
     // ---- scanning and the list
+
+    /// <summary>The kind SELECT FROM limits picking to, as the menu names it ("ENEMIES"), or empty when it picks anything.</summary>
+    public string PickFilter => _pickFrom.Index == 0 ? "" : _pickFrom.State;
 
     private bool PicksKind(ThingKind k) => _pickFrom.Index == 0 || _pickFrom.Index - 1 == (int)k;
 

@@ -22,15 +22,16 @@ internal sealed partial class Population : Module
     private const string NoticeTitle = "CITY";
     private const double ReadoutSeconds = 1.0;
 
-    private static readonly (EThreatType Type, string Label)[] Threats =
+    /// <summary>The threat counts the city keeps, each with the THREAT ESP kind whose code and colour it shows in.</summary>
+    private static readonly (EThreatType Type, Kind Kind)[] Threats =
     {
-        (EThreatType.ETHREAT_Watchtower, "WATCHTOWERS"),
-        (EThreatType.ETHREAT_CheckPoint, "CHECKPOINTS"),
-        (EThreatType.ETHREAT_Beacons, "BEACONS"),
-        (EThreatType.ETHREAT_AerialDrone, "AIR DRONES"),
-        (EThreatType.ETHREAT_LightDrone, "DRONE TANKS"),
-        (EThreatType.ETHREAT_HeavyDrone, "HEAVY TANKS"),
-        (EThreatType.ETHREAT_Humvee, "HUMVEES"),
+        (EThreatType.ETHREAT_Watchtower, Kind.Watchtower),
+        (EThreatType.ETHREAT_CheckPoint, Kind.Checkpoint),
+        (EThreatType.ETHREAT_Beacons, Kind.Beacon),
+        (EThreatType.ETHREAT_AerialDrone, Kind.AirDrone),
+        (EThreatType.ETHREAT_LightDrone, Kind.DroneTank),
+        (EThreatType.ETHREAT_HeavyDrone, Kind.HeavyTank),
+        (EThreatType.ETHREAT_Humvee, Kind.Humvee),
     };
 
     private readonly Held<RPopulationManager, bool> _disabled = new("population disable", p => p.bForceDisable, (p, v) => p.bForceDisable = v);
@@ -40,8 +41,7 @@ internal sealed partial class Population : Module
     private Every _refresh;
     private string _island = "";
     private string _cell = "";
-    private string _threats = "";
-    private string _threats2 = "";
+    private readonly List<(Kind Kind, int Count)> _counts = new();
 
     public override bool HasHud => (_readout.On || _esp.On) && World.InGame;
 
@@ -298,6 +298,7 @@ internal sealed partial class Population : Module
 
     private void Refresh()
     {
+        _counts.Clear();
         if (Manager() is not { } pm || World.Pawn is not { } me)
         {
             _island = "";
@@ -309,29 +310,14 @@ internal sealed partial class Population : Module
         _island = d == EDistrict.EDISTRICT_None ? "OFF THE MAP" : Island(d) + " ISLAND";
         _cell = Districts.At(at) ?? "";
         if (d == EDistrict.EDISTRICT_None)
-        {
-            _threats = _threats2 = "";
             return;
-        }
 
-        var parts = new List<string>();
-        foreach ((EThreatType type, string label) in Threats)
+        foreach ((EThreatType type, Kind kind) in Threats)
         {
             int n = pm.GetThreatLevel(d, type, false);
             if (n > 0)
-                parts.Add(label + " " + n);
+                _counts.Add((kind, n));
         }
-
-        if (parts.Count == 0)
-        {
-            _threats = "MILITIA CLEARED";
-            _threats2 = "";
-            return;
-        }
-
-        int half = (parts.Count + 1) / 2;
-        _threats = string.Join("   ", parts.Take(half));
-        _threats2 = string.Join("   ", parts.Skip(half));
     }
 
     public override void Draw(Canvas c)
@@ -342,6 +328,7 @@ internal sealed partial class Population : Module
             DrawReadout();
     }
 
+    /// <summary>CITY: the island and district, and what the militia still holds there as chips in THREAT ESP's codes and colours.</summary>
     private void DrawReadout()
     {
         if (_refresh.Elapsed(ReadoutSeconds))
@@ -349,14 +336,60 @@ internal sealed partial class Population : Module
         if (_island.Length == 0)
             return;
 
-        float x = Gfx.S(28f);
-        float y = Gfx.S(290f);
-        float width = Math.Max(250f, 28f + Math.Max(Gfx.TextW(_threats, 0.6f), Gfx.TextW(_threats2, 0.6f)) / Math.Max(Gfx.Scale, 0.01f));
-        float height = _threats2.Length > 0 ? 68f : 50f;
-        Gfx.Panel(x, y, Gfx.S(width), Gfx.S(height));
-        Gfx.Text(x + Gfx.S(14f), y + Gfx.S(9f), _island + (_cell.Length > 0 ? "  /  " + _cell.ToUpperInvariant() : ""), Theme.Hi, 0.66f);
-        Gfx.Text(x + Gfx.S(14f), y + Gfx.S(27f), _threats, Theme.Mid, 0.6f);
-        if (_threats2.Length > 0)
-            Gfx.Text(x + Gfx.S(14f), y + Gfx.S(45f), _threats2, Theme.Mid, 0.6f);
+        float w = Hud.U(Hud.CardW);
+        float inner = w - Hud.U(Hud.Pad) * 2f;
+        float cellH = _cell.Length > 0 ? Gfx.TextH(Hud.Sc(Hud.SmallScale)) + Hud.U(2) : 0f;
+        float body = Gfx.TextH(Hud.Sc(Hud.ValueScale)) + cellH + Hud.U(8) + Chips(0f, 0f, inner, false);
+        float h = Hud.Height(body);
+        var (x, y, age) = Hud.Place("city", Hud.Side.Left, 1, w, h);
+
+        int left = 0;
+        foreach (var t in _counts)
+            left += t.Count;
+        string note = _island == "OFF THE MAP" ? "" : left == 0 ? "CLEARED" : left + " LEFT";
+        float top = Hud.Card(x, y, w, h, "CITY", note, left == 0 ? Things.Colors[(int)ThingKind.Friendly] : Theme.Signal, age);
+
+        float lx = x + Hud.U(Hud.Pad);
+        Gfx.Text(lx, top, _island, Theme.Hi, Hud.Sc(Hud.ValueScale));
+        top += Gfx.TextH(Hud.Sc(Hud.ValueScale));
+        if (_cell.Length > 0)
+        {
+            Gfx.Text(lx, top + Hud.U(1), _cell.ToUpperInvariant(), Theme.Low, Hud.Sc(Hud.SmallScale));
+            top += cellH;
+        }
+
+        Chips(lx, top + Hud.U(8), inner, true);
+    }
+
+    /// <summary>The threat chips, flowing onto new rows. Returns their height; pass draw = false to measure.</summary>
+    private float Chips(float x, float y, float w, bool draw)
+    {
+        float row = Hud.ChipH + Hud.U(5);
+        if (_counts.Count == 0)
+        {
+            if (draw && _island != "OFF THE MAP")
+                Hud.Chip(x, y + Hud.ChipH * 0.5f, "MILITIA CLEARED", Things.Colors[(int)ThingKind.Friendly]);
+            return _island == "OFF THE MAP" ? 0f : Hud.ChipH;
+        }
+
+        float cx = x, cy = y + Hud.ChipH * 0.5f;
+        int rows = 1;
+        foreach ((Kind kind, int n) in _counts)
+        {
+            string text = Code(kind) + "  " + n;
+            float cw = Hud.ChipW(text);
+            if (cx > x && cx + cw > x + w)
+            {
+                cx = x;
+                cy += row;
+                rows++;
+            }
+
+            if (draw)
+                Hud.Chip(cx, cy, text, Colour(kind), 0.16f);
+            cx += cw + Hud.U(5);
+        }
+
+        return rows * row - Hud.U(5);
     }
 }

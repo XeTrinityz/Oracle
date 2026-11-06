@@ -24,6 +24,7 @@ internal sealed partial class Population
     private const float Metre = 100f;
     private const double ScanSeconds = 1.0;
     private const double FlagSeconds = 5.0;
+    private const float PlateRange = 12000f;
     private const float LabelRange = 25000f;
     private const float NearDist = 1500f;
     private const float FarDist = 30000f;
@@ -39,18 +40,18 @@ internal sealed partial class Population
     private static readonly Rgba ColTank = new(255, 72, 72);
     private static readonly Rgba ColHeavy = new(220, 30, 60);
     private static readonly Rgba ColCar = new(240, 230, 110);
-    private static readonly Rgba ColDim = new(120, 130, 132);
 
     private Toggle _esp = null!;
     private Slider _espRange = null!;
     private readonly List<Mark> _marks = new();
+    private readonly HashSet<nint> _marked = new();
     private readonly Dictionary<nint, Kind?> _carKinds = new();
     private readonly Dictionary<nint, (bool Gone, double At)> _towerGone = new();
     private Every _scan;
 
     private void BuildEsp()
     {
-        _esp = AddToggle("city_threat_esp", "THREAT ESP", "A marker over each militia threat loaded around you: watchtowers, checkpoints, beacons, air drones, drone tanks, heavy tanks, humvees and APCs, with its distance and, for vehicles, its health. Far-off ones appear as the city streams them in. Grey ones are parked or asleep and won't fight until the game wakes them.",
+        _esp = AddToggle("city_threat_esp", "THREAT ESP", "A round marker over each militia threat loaded around you, with a code in the middle: WT watchtower, CP checkpoint, CB command beacon, AD air drone, DT drone tank, HT heavy tank, HV humvee, APC. On vehicles the ring is their health. Live ones have turning ticks; grey ones are parked or asleep and won't fight until the game wakes them. Aim at one for its card. Far-off ones appear as the city streams them in.",
             on => { if (!on) ForgetEsp(); });
         _espRange = AddSlider("city_threat_esp_range", "THREAT ESP RANGE", "How far away THREAT ESP marks things.", 400f, 50f, 1500f, 50f, 400f, Fmt.Metres).Pref();
     }
@@ -58,6 +59,7 @@ internal sealed partial class Population
     private void ForgetEsp()
     {
         _marks.Clear();
+        _marked.Clear();
         _carKinds.Clear();
         _towerGone.Clear();
         _scan.Force();
@@ -159,10 +161,36 @@ internal sealed partial class Population
 
     // ---- drawing
 
+    private static readonly List<Pawn> _crew = new();
+    private static readonly List<(float X, float Y, bool Hostile)> _pips = new();
+
+    /// <summary>Adds everyone riding in a vehicle THREAT ESP marks, so the editor's ESP folds them into its marker.</summary>
+    public void AddCrews(HashSet<nint> into)
+    {
+        if (!_esp.On)
+            return;
+        foreach (Mark m in _marks)
+        {
+            if (m.Actor is not Vehicle || Crew.Of(m.Actor, _crew) == 0)
+                continue;
+            foreach (Pawn p in _crew)
+                into.Add(p.Ptr);
+        }
+    }
+
+    /// <summary>Marked by THREAT ESP right now, so the editor's ESP leaves it to this marker.</summary>
+    public bool Marks(nint ptr) => _esp.On && _marked.Contains(ptr);
+
     private void DrawEsp(Canvas c)
     {
         if (_scan.Elapsed(ScanSeconds))
+        {
             ScanEsp();
+            _marked.Clear();
+            foreach (Mark m in _marks)
+                _marked.Add(m.Actor.Ptr);
+        }
+
         if (_marks.Count == 0)
             return;
 
@@ -173,6 +201,10 @@ internal sealed partial class Population
             return;
 
         Alpha = 1f;
+        Lens.Discard();
+        Mark? focus = null;
+        Vector2 focusAt = default;
+        float focusR = 0f;
         foreach (Mark m in _marks)
         {
             Actor a = m.Actor;
@@ -180,38 +212,108 @@ internal sealed partial class Population
                 continue;
             if (a is Pawn { Health: <= 0 })
                 continue;
-            DrawMark(m, a, me);
+            if (DrawMark(m, a, me, out Vector2 at, out float r))
+            {
+                focus = m;
+                focusAt = at;
+                focusR = r;
+            }
         }
+
+        Crew.FlushPips(_pips);
+        if (focus is { } f)
+            DrawFocus(f, focusAt, focusR, me);
     }
 
-    private static void DrawMark(Mark m, Actor a, Pawn me)
+    /// <summary>Draws one threat's marker. True when it has the focus, so its card is drawn last, over the rest.</summary>
+    private static bool DrawMark(Mark m, Actor a, Pawn me, out Vector2 p, out float r)
     {
+        r = 0f;
         Vector3 top = a.Location + Vector3.UnitZ * m.Lift;
-        if (!WorldView.ToScreen(top, out Vector2 p) || !WorldView.OnScreen(p, -S(12)))
-            return;
+        if (!WorldView.ToScreen(top, out p) || !WorldView.OnScreen(p, -S(12)))
+            return false;
 
         float dist = Vector3.Distance(top, WorldView.Eye);
         float near = Math.Clamp((FarDist - dist) / (FarDist - NearDist), 0f, 1f);
-        float size = S(5f + 6f * near);
-        Rgba col = m.Dim ? ColDim : Colour(m.Kind);
+        float settle = Lens.Settle(Lens.Age(a.Ptr));
+        r = Lens.L(7f + 7f * near) * (0.6f + 0.4f * settle);
+        Rgba col = m.Dim ? Lens.Dormant : Colour(m.Kind);
+        float health = a is Pawn { HealthMax: > 0 } v ? Math.Clamp(v.Health / (float)v.HealthMax, 0f, 1f) : -1f;
 
-        Spawner.Chevron(p.X, p.Y, size, col);
-        float y = p.Y - size * 1.15f - S(4);
+        Lens.Offer(a.Ptr, p, r + Lens.L(4));
+        Lens.Beacon(p.X, p.Y, r, col, Code(m.Kind), health, !m.Dim);
 
-        if (a is Pawn { HealthMax: > 0 } v && !m.Dim)
+        Lens.Tier tier = Lens.TierOf(a.Ptr, dist, PlateRange, LabelRange);
+        if (tier == Lens.Tier.Card)
+            return true;
+
+        float below = p.Y + r + Lens.L(9);
+        if (Crew.Of(a, _crew) > 0)
         {
-            float w = size * 2.4f, h = MathF.Max(2f, S(3f));
-            y -= h + S(3);
-            Rect(p.X - w * 0.5f - S(1), y - S(1), w + S(2), h + S(2), Spawner.MarkerEdge, 0.85f);
-            Rect(p.X - w * 0.5f, y, w * Math.Clamp(v.Health / (float)v.HealthMax, 0f, 1f), h, col, 1f);
+            Crew.Pips(_crew, p.X, below, _pips);
+            below += Lens.L(10);
         }
 
-        if (dist > LabelRange)
-            return;
-        string label = Label(m.Kind) + (m.Note.Length > 0 ? " / " + m.Note : "");
-        TextCentre(p.X, y - S(14), label, col, 0.5f);
-        TextCentre(p.X, p.Y + S(3), Fmt.Metres(Vector3.Distance(a.Location, me.Location) / Metre), col, 0.42f, 0.8f);
+        string metres = Lens.Metres(Vector3.Distance(a.Location, me.Location));
+        if (tier == Lens.Tier.Full)
+        {
+            string name = Label(m.Kind) + (m.Note.Length > 0 ? "  " + m.Note : "");
+            float h = TextH(Lens.NameScale * Lens.Size) + Lens.L(3);
+            Lens.Plate(p.X, below + h, name, metres, col, settle);
+        }
+        else if (tier == Lens.Tier.Name)
+        {
+            Lens.Caption(p.X, below, metres, Rgba.Mix(col, Theme.Hi, 0.4f));
+        }
+
+        return false;
     }
+
+    private static readonly List<(string, Rgba)> _cardLines = new();
+
+    private static void DrawFocus(Mark m, Vector2 p, float r, Pawn me)
+    {
+        Actor a = m.Actor;
+        Rgba col = m.Dim ? Lens.Dormant : Colour(m.Kind);
+        float pad = Lens.L(5);
+        Lens.Lock(p.X - r, p.Y - r, p.X + r, p.Y + r, Theme.Accent, Lens.FocusAge);
+
+        _cardLines.Clear();
+        string where = Lens.Metres(Vector3.Distance(a.Location, me.Location)) + " AWAY";
+        float health = -1f, trail = -1f;
+        if (a is Pawn { HealthMax: > 0 } v)
+        {
+            where += "   " + Math.Max(0, v.Health) + " / " + v.HealthMax + " HP";
+            health = Math.Clamp(v.Health / (float)v.HealthMax, 0f, 1f);
+            trail = Lens.Trail(a.Ptr, health);
+        }
+
+        _cardLines.Add((where, Theme.Mid));
+        if (Crew.Of(a, _crew) > 0)
+            Crew.Lines(_crew, _cardLines);
+        _cardLines.Add((m.Note switch
+        {
+            "PARKED" => "PARKED: SET DRESSING, IT WON'T FIGHT",
+            "ASLEEP" => "ASLEEP UNTIL THE GAME WAKES IT",
+            "JAMMED" => "JAMMED: IT CAN'T SEE YOU",
+            _ => "ACTIVE",
+        }, m.Dim ? Theme.Low : Theme.Signal));
+
+        Lens.Card(p.X, p.Y, p.X + r + pad, p.Y - r - pad, "MILITIA THREAT", Label(m.Kind), _cardLines, col, health, trail, Lens.FocusAge);
+    }
+
+    /// <summary>The code in the middle of each marker, like a tactical map's.</summary>
+    private static string Code(Kind k) => k switch
+    {
+        Kind.Watchtower => "WT",
+        Kind.Checkpoint => "CP",
+        Kind.Beacon => "CB",
+        Kind.AirDrone => "AD",
+        Kind.DroneTank => "DT",
+        Kind.HeavyTank => "HT",
+        Kind.Humvee => "HV",
+        _ => "APC",
+    };
 
     private static Rgba Colour(Kind k) => k switch
     {

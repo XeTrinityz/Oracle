@@ -1556,6 +1556,7 @@ internal sealed partial class Npcs : Module
 
     // ---- info
 
+    /// <summary>NEARBY: enemies standing and down, friendlies and turncoats as stat columns, over a standing/down bar.</summary>
     public override void Draw(Canvas c)
     {
         int up = 0, down = 0, friends = 0, turned = 0;
@@ -1573,12 +1574,31 @@ internal sealed partial class Npcs : Module
                 down++;
         }
 
-        const float width = 250f;
-        const float height = 50f;
-        float x = Gfx.S(28f);
-        float y = Gfx.S(230f);
-        Gfx.Panel(x, y, Gfx.S(width), Gfx.S(height));
-        Gfx.Text(x + Gfx.S(14f), y + Gfx.S(9f), "ENEMIES " + up + " UP, " + down + " DOWN", Theme.Hi, 0.66f);
-        Gfx.Text(x + Gfx.S(14f), y + Gfx.S(27f), "FRIENDLIES " + friends + (turned > 0 ? ", TURNED " + turned : ""), Theme.Mid, 0.66f);
+        float w = Hud.U(Hud.CardW);
+        float h = Hud.Height(Hud.StatH + Hud.U(8) + Hud.U(4));
+        var (x, y, age) = Hud.Place("nearby", Hud.Side.Left, 2, w, h);
+        float top = Hud.Card(x, y, w, h, "NEARBY", "WITHIN 90 M", Theme.Low, age);
+
+        float left = x + Hud.U(Hud.Pad), inner = w - Hud.U(Hud.Pad) * 2f;
+        Rgba enemy = Things.Colors[(int)ThingKind.Enemy];
+        int cols = turned > 0 ? 4 : 3;
+        float cw = inner / cols;
+        Hud.Stat(left, top, Count(up), "ENEMIES", up > 0 ? enemy : Theme.Mid);
+        Hud.Stat(left + cw, top, Count(down), "DOWN", Lens.Dormant);
+        Hud.Stat(left + cw * 2f, top, Count(friends), "FRIENDLY", Things.Colors[(int)ThingKind.Friendly]);
+        if (turned > 0)
+            Hud.Stat(left + cw * 3f, top, Count(turned), "TURNED", Theme.Accent);
+        top += Hud.StatH + Hud.U(8);
+
+        float bh = Hud.U(4);
+        Gfx.Rect(left, top, inner, bh, Theme.White, 0.06f);
+        if (up + down > 0)
+        {
+            float uw = MathF.Round(inner * up / (up + down));
+            Gfx.Rect(left, top, uw, bh, enemy, 0.95f);
+            Gfx.Rect(left + uw, top, inner - uw, bh, Lens.Dormant, 0.7f);
+        }
     }
+
+    private static string Count(int n) => n.ToString(CultureInfo.InvariantCulture);
 }

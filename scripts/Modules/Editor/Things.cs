@@ -60,6 +60,9 @@ internal static class Things
     public const int KindCount = 7;
     private const double BoxSeconds = 2.0;
     private const float MaxBox = 6000f;
+
+    /// <summary>The biggest a vehicle's box may be on any side: a heavy tank is about 12 m long.</summary>
+    private const float MaxVehicleBox = 2000f;
     private const float DefaultHalf = 50f;
 
     public static readonly string[] Labels = { "ENEMY", "FRIENDLY", "VEHICLE", "TURRET", "PROP", "SCENERY", "PICKUP", "OBJECT" };
@@ -247,28 +250,36 @@ internal static class Things
         // does is the main component's bounds used on its own.
         // A vehicle's component list couldn't be read in game (2026-11-05: every RVehicleCar threw), and its skeletal
         // mesh covers the whole vehicle anyway, so vehicles skip straight to the mesh below.
-        Vector3 min = new(float.MaxValue), max = new(float.MinValue);
-        bool any = false;
+        // What you can see wins over what collides: an interaction trigger can be far bigger than the thing it belongs
+        // to (an upside-down abandoned car got a box several times its size, 2026-11-06). Colliding parts only count
+        // when nothing visible does. Then only parts that touch each other count, starting from the one the actor
+        // stands in, so a piece lying metres away doesn't stretch the box (upside-down cars again, 2026-11-06).
+        Vector3 at = a.Location;
+        float limit = t.Kind == ThingKind.Vehicle ? MaxVehicleBox : MaxBox;
+        _meshParts.Clear();
+        _colParts.Clear();
         if (a is not Vehicle)
         {
             try
             {
                 foreach (ActorComponent c in a.Components)
                 {
-                    if (c is PrimitiveComponent { IsValid: true, bAttached: true, CollideActors: true } prim)
-                        any |= Add(prim, ref min, ref max);
+                    if (c is MeshComponent { IsValid: true, bAttached: true, HiddenGame: false } mesh)
+                        Collect(mesh, at, limit, _meshParts);
+                    else if (c is PrimitiveComponent { IsValid: true, bAttached: true, CollideActors: true } prim)
+                        Collect(prim, at, limit, _colParts);
                 }
             }
             catch (Exception)
             {
                 // Unreadable parts: fall back to the main component below.
-                min = new Vector3(float.MaxValue);
-                max = new Vector3(float.MinValue);
-                any = false;
+                _meshParts.Clear();
+                _colParts.Clear();
             }
         }
 
-        if (!any)
+        List<Part> parts = _meshParts.Count > 0 ? _meshParts : _colParts;
+        if (parts.Count == 0)
         {
             // Some RVehicleCars throw from the Mesh getter itself (2026-11-05, every few seconds in the log), so a
             // part that can't be read leaves the default box instead of skipping the whole thing.
@@ -292,32 +303,143 @@ internal static class Things
             }
 
             if (main is { IsValid: true })
-                any = Add(main, ref min, ref max);
+                Collect(main, at, limit, parts);
         }
 
-        Vector3 size = max - min;
-        if (any && size.X > 1f && size.Y > 1f && size.Z > 1f && size.X < MaxBox && size.Y < MaxBox && size.Z < MaxBox)
+        if (Cluster(parts, at, out Vector3 min, out Vector3 max))
         {
-            Vector3 at = a.Location;
-            t.Min = min - at;
-            t.Max = max - at;
-            return;
+            Vector3 size = max - min;
+            if (size.X > 1f && size.Y > 1f && size.Z > 1f && size.X < limit && size.Y < limit && size.Z < limit)
+            {
+                t.Min = min - at;
+                t.Max = max - at;
+                return;
+            }
         }
 
         t.Min = new Vector3(-DefaultHalf);
         t.Max = new Vector3(DefaultHalf);
     }
 
-    /// <summary>Grows a box to take in one component's bounds. Ignores a component that has no size yet.</summary>
-    private static bool Add(PrimitiveComponent c, ref Vector3 min, ref Vector3 max)
+    private readonly record struct Part(Vector3 Min, Vector3 Max);
+
+    private static readonly List<Part> _meshParts = new();
+    private static readonly List<Part> _colParts = new();
+
+    /// <summary>How close two parts must come to count as one object, in world units.</summary>
+    private const float Touch = 60f;
+
+    /// <summary>
+    /// Keeps one component's bounds as a part. Ignores a component that has no size yet, and one bigger than
+    /// <paramref name="limit"/> or centred further than that from the actor: a dead vehicle's parts once added up to
+    /// a box that filled the screen from 50 m away (2026-11-06).
+    /// </summary>
+    private static void Collect(PrimitiveComponent c, Vector3 at, float limit, List<Part> into)
     {
         GameObject.FBoxSphereBounds b = c.Bounds;
         Vector3 e = b.BoxExtent;
         if (!(e.X > 0f && e.Y > 0f && e.Z > 0f) || !float.IsFinite(b.Origin.X))
+            return;
+
+        Vector3 lo = b.Origin - e, hi = b.Origin + e;
+        if (c is SkeletalMeshComponent sk && Posed(sk, out Vector3 plo, out Vector3 phi) && Volume(phi - plo) < Volume(hi - lo))
+            (lo, hi) = (plo, phi);
+
+        Vector3 size = hi - lo;
+        if (size.X > limit || size.Y > limit || size.Z > limit || Vector3.Distance((lo + hi) * 0.5f, at) > limit)
+            return;
+
+        into.Add(new Part(lo, hi));
+    }
+
+    private static float Volume(Vector3 s) => s.X * s.Y * s.Z;
+
+    /// <summary>
+    /// A skeletal mesh's own box as built (the asset's rest-pose bounds) turned and placed by the component's transform.
+    /// The bounds the engine keeps for a skeletal mesh come from its physics bodies and can be far bigger than the
+    /// model: two abandoned cars reported 6.6 x 14.6 m and 7.5 x 10.5 m, each from its one mesh (2026-11-06).
+    /// LocalToWorld is read from memory: natives returning an FMatrix can crash (see BatmobileWinch).
+    /// </summary>
+    private static unsafe bool Posed(SkeletalMeshComponent c, out Vector3 lo, out Vector3 hi)
+    {
+        lo = hi = default;
+        if (c.SkeletalMesh is not { IsValid: true } mesh)
             return false;
 
-        min = Vector3.Min(min, b.Origin - e);
-        max = Vector3.Max(max, b.Origin + e);
+        GameObject.FBoxSphereBounds b = mesh.Bounds;
+        Vector3 e = b.BoxExtent;
+        if (!(e.X > 0f && e.Y > 0f && e.Z > 0f) || !float.IsFinite(b.Origin.X))
+            return false;
+
+        // Rows X, Y, Z, W: UE3 row vectors, like System.Numerics.
+        float* m = (float*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref c.LocalToWorld);
+        var toWorld = new Matrix4x4(
+            m[0], m[1], m[2], 0f,
+            m[4], m[5], m[6], 0f,
+            m[8], m[9], m[10], 0f,
+            m[12], m[13], m[14], 1f);
+
+        lo = new Vector3(float.MaxValue);
+        hi = new Vector3(float.MinValue);
+        for (int i = 0; i < 8; i++)
+        {
+            var corner = b.Origin + new Vector3((i & 1) == 0 ? -e.X : e.X, (i & 2) == 0 ? -e.Y : e.Y, (i & 4) == 0 ? -e.Z : e.Z);
+            Vector3 w = Vector3.Transform(corner, toWorld);
+            lo = Vector3.Min(lo, w);
+            hi = Vector3.Max(hi, w);
+        }
+
+        Vector3 size = hi - lo;
+        return float.IsFinite(size.X) && float.IsFinite(size.Y) && float.IsFinite(size.Z) && size.X > 1f && size.Y > 1f && size.Z > 1f;
+    }
+
+    /// <summary>
+    /// The box around the parts that hang together: it starts from the part the actor stands in (or the nearest) and
+    /// takes in every part that touches it, until nothing more does.
+    /// </summary>
+    private static bool Cluster(List<Part> parts, Vector3 at, out Vector3 min, out Vector3 max)
+    {
+        min = max = default;
+        if (parts.Count == 0)
+            return false;
+
+        int seed = 0;
+        float best = float.MaxValue;
+        for (int i = 0; i < parts.Count; i++)
+        {
+            float d = Vector3.Distance(at, Vector3.Clamp(at, parts[i].Min, parts[i].Max));
+            if (d < best)
+            {
+                best = d;
+                seed = i;
+            }
+        }
+
+        Span<bool> taken = parts.Count <= 128 ? stackalloc bool[parts.Count] : new bool[parts.Count];
+        taken[seed] = true;
+        min = parts[seed].Min;
+        max = parts[seed].Max;
+        var touch = new Vector3(Touch);
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (taken[i])
+                    continue;
+                Part p = parts[i];
+                Vector3 lo = min - touch, hi = max + touch;
+                if (p.Max.X < lo.X || p.Max.Y < lo.Y || p.Max.Z < lo.Z || p.Min.X > hi.X || p.Min.Y > hi.Y || p.Min.Z > hi.Z)
+                    continue;
+
+                taken[i] = true;
+                min = Vector3.Min(min, p.Min);
+                max = Vector3.Max(max, p.Max);
+                grew = true;
+            }
+        }
+
         return true;
     }
 

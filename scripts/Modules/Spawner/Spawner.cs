@@ -107,7 +107,7 @@ internal sealed partial class Spawner : Module
         AddCommand("spawned_delete", "DELETE IT", "Takes the spawn above out of the world for good.", DeletePicked);
         AddCommand("spawned_delete_last", "DELETE LAST", "Takes your most recent spawn out of the world.", DeleteLast);
         AddCommand("spawned_delete_all", "DELETE EVERYTHING SPAWNED", "Takes everything you've spawned out of the world. Only spawns: nothing the game placed is touched.", DeleteAll);
-        _selectNew = AddToggle("spawn_select_new", "SELECT WHAT YOU SPAWN", "The newest spawn becomes the world editor's selection, ready to GRAB or edit.", on: true).Pref();
+        _selectNew = AddToggle("spawn_select_new", "SELECT WHAT YOU SPAWN", "The newest spawn becomes the world editor's selection, ready to GRAB or edit.").Pref();
         _clearFallen = AddToggle("spawn_clear_fallen", "CLEAR THE FALLEN", "Knocked-out characters and destroyed vehicles you spawned are taken away AFTER this long, so they don't pile up.", on: true).Pref();
         _clearAfter = AddSlider("spawn_clear_after", "AFTER", "How long a fallen spawn stays before CLEAR THE FALLEN takes it away.", 30f, 5f, 180f, 5f, 10f, Fmt.Secs).Pref();
         _clearFar = AddSlider("spawn_clear_far", "CLEAR FAR AWAY", "Spawns this far from you are taken away, so you can spawn and move on. Bodyguards never are: they follow you.", 300f, 0f, 1000f, 50f, 150f, Fmt.MetresOrOff).Pref();

@@ -460,6 +460,7 @@ internal sealed partial class CameraRig
         Gfx.Rect(0f, Gfx.H - bar, Gfx.W, bar, Theme.Black);
     }
 
+    /// <summary>CAMERA: the field of view on screen, big, with the game's own, the camera state and its distance as fields.</summary>
     private void DrawReadout()
     {
         if (PlayerCam() == null)
@@ -468,20 +469,23 @@ internal sealed partial class CameraRig
         Pawn? pawn = World.Pawn;
         float dist = pawn != null ? Vector3.Distance(_shownAt, pawn.Location) : 0f;
         string mode = FreeCam.I.Active ? FreeCam.I.ModeLabel : _shownCat switch { CatGlide => "GLIDE", CatCar => "BATMOBILE", CatAim => "AIM", _ => "ON FOOT" };
-        string line1 = "FOV " + _shownFov.ToString("0.0", CultureInfo.InvariantCulture) + "  ON SCREEN";
-        string line2 = "GAME " + _gameFov.ToString("0.0", CultureInfo.InvariantCulture) + "  " + mode + "  " + _stateName.ToUpperInvariant();
-        string line3 = "DISTANCE " + dist.ToString("0", CultureInfo.InvariantCulture);
 
-        const float scale = 0.72f;
-        float lh = Gfx.S(20);
-        float w = Math.Max(Gfx.TextW(line2, scale), Gfx.TextW(line1, 0.85f)) + Gfx.S(32);
-        float h = Gfx.S(22) + lh * 3f;
-        float x = Gfx.S(24);
-        float y = Gfx.H - h - Gfx.S(120);
-        Gfx.Panel(x, y, w, h, 0.75f, 2f);
-        float cy = y + Gfx.S(10) + lh * 0.5f;
-        Gfx.TextMid(x + Gfx.S(14), cy, line1, Theme.Accent, 0.85f);
-        Gfx.TextMid(x + Gfx.S(14), cy + lh, line2, Theme.Mid, scale);
-        Gfx.TextMid(x + Gfx.S(14), cy + lh * 2f, line3, Theme.Mid, scale);
+        float w = Hud.U(Hud.CardW);
+        float body = Gfx.TextH(Hud.Sc(Hud.ValueScale)) + Hud.U(8) + Hud.FieldH * 2f + Hud.U(6);
+        float h = Hud.Height(body);
+        var (x, y, age) = Hud.Place("camera", Hud.Side.BottomLeft, 0, w, h);
+        float top = Hud.Card(x, y, w, h, "CAMERA", mode, Theme.Signal, age);
+
+        float left = x + Hud.U(Hud.Pad), inner = w - Hud.U(Hud.Pad) * 2f;
+        string fov = "FOV " + _shownFov.ToString("0.0", CultureInfo.InvariantCulture);
+        Gfx.Text(left, top, fov, Theme.Hi, Hud.Sc(Hud.ValueScale));
+        Gfx.Text(left + Gfx.TextW(fov, Hud.Sc(Hud.ValueScale)) + Hud.U(8), top + Hud.U(3), "ON SCREEN", Theme.Low, Hud.Sc(Hud.SmallScale));
+        top += Gfx.TextH(Hud.Sc(Hud.ValueScale)) + Hud.U(8);
+
+        float gap = Hud.U(6), half = (inner - gap) * 0.5f;
+        Hud.Field(left, top, half, "GAME", _gameFov.ToString("0.0", CultureInfo.InvariantCulture), Theme.Hi);
+        Hud.Field(left + half + gap, top, half, "DISTANCE", dist.ToString("0", CultureInfo.InvariantCulture), Theme.Hi);
+        top += Hud.FieldH + Hud.U(6);
+        Hud.Field(left, top, inner, "STATE", _stateName.ToUpperInvariant(), Theme.Mid);
     }
 }

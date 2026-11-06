@@ -224,6 +224,7 @@ internal sealed class Status : Module
 
     // ---- readout
 
+    /// <summary>STATUS: health with a damage trail, armour, and experience toward the next upgrade, with running cheats as the note.</summary>
     public override void Draw(Canvas c)
     {
         if (World.Pawn is not RPawnPlayer p)
@@ -234,40 +235,46 @@ internal sealed class Status : Module
         bool armour = melee > 0 || ballistic > 0;
         RPersistentShared? shared = World.Info?.PersistentShared is { IsValid: true } ps ? ps : null;
 
-        const float width = 220f;
-        float height = 76f + (armour ? 28f : 0f) + (shared != null ? 28f : 0f);
-        float x = Gfx.W - Gfx.S(width) - Gfx.S(28f);
-        float y = Gfx.H - Gfx.S(height) - Gfx.S(48f);
-        Gfx.Panel(x, y, Gfx.S(width), Gfx.S(height));
+        float big = Hud.U(6), small = Hud.U(4), gap = Hud.U(9);
+        float body = Hud.CaptionH + big + (armour ? gap + Hud.CaptionH + small : 0f) + (shared != null ? gap + Hud.CaptionH + small : 0f);
+        float w = Hud.U(250);
+        float h = Hud.Height(body);
+        var (x, y, age) = Hud.Place("status", Hud.Side.BottomRight, 0, w, h);
+        string flags = Flags();
+        float top = Hud.Card(x, y, w, h, "STATUS", flags, Theme.Signal, age);
 
-        float left = x + Gfx.S(14f);
-        float right = x + Gfx.S(width - 14f);
-        float barW = Gfx.S(width - 28f);
-        Gfx.Text(left, y + Gfx.S(9f), Flags(), Theme.Mid, 0.6f);
-
-        float row = y + Gfx.S(30f);
-        Meter(left, right, row, barW, "HEALTH", p.Health, p.MaxHealth);
-        row += Gfx.S(28f);
+        float left = x + Hud.U(Hud.Pad), inner = w - Hud.U(Hud.Pad) * 2f;
+        float frac = p.MaxHealth > 0 ? Math.Max(0, p.Health) / (float)p.MaxHealth : 0f;
+        Hud.Caption(left, top, inner, "HEALTH", p.MaxHealth > 0 ? Math.Max(0, p.Health) + " / " + p.MaxHealth : "-", Theme.Mid);
+        top += Hud.CaptionH;
+        Lens.Meter(left, top, inner, big, frac, Lens.Trail(p.Ptr, frac), Theme.Accent, 10);
+        top += big;
 
         if (armour)
         {
-            float half = (barW - Gfx.S(10f)) * 0.5f;
-            Meter(left, left + half, row, half, "MELEE", Armour(p, 0), melee);
-            Meter(left + half + Gfx.S(10f), right, row, half, "BALLISTIC", Armour(p, 1), ballistic);
-            row += Gfx.S(28f);
+            top += gap;
+            float half = (inner - Hud.U(10)) * 0.5f;
+            int m = Armour(p, 0), b = Armour(p, 1);
+            Hud.Caption(left, top, half, "MELEE", melee > 0 ? m + " / " + melee : "-", Theme.Mid);
+            Hud.Caption(left + half + Hud.U(10), top, half, "BALLISTIC", ballistic > 0 ? b + " / " + ballistic : "-", Theme.Mid);
+            top += Hud.CaptionH;
+            Lens.Meter(left, top, half, small, melee > 0 ? (float)m / melee : 0f, 0f, Theme.Accent, 5);
+            Lens.Meter(left + half + Hud.U(10), top, half, small, ballistic > 0 ? (float)b / ballistic : 0f, 0f, Theme.Accent, 5);
+            top += small;
         }
 
         if (shared != null)
         {
+            top += gap;
             float span = shared.XpForNextUpgrade - shared.XpForPrevUpgrade;
             float into = shared.Xp - shared.XpForPrevUpgrade;
-            Gfx.Text(left, row, "XP", Theme.Mid, 0.56f);
-            Gfx.TextRight(right, row + Gfx.S(5f), Whole(into) + " / " + Whole(span) + "   POINTS " + shared.UpgradePointsAvailable, Theme.Hi, 0.56f);
-            Bar(left, row + Gfx.S(14f), barW, span > 0f ? into / span : 0f);
+            Hud.Caption(left, top, inner, "XP", Whole(into) + " / " + Whole(span) + "   " + shared.UpgradePointsAvailable + " POINTS", Theme.Mid);
+            top += Hud.CaptionH;
+            Lens.Meter(left, top, inner, small, span > 0f ? into / span : 0f, 0f, Rgba.Mix(Theme.Accent, Theme.White, 0.35f), 0);
         }
     }
 
-    /// <summary>The status cheats that are on, as a header line.</summary>
+    /// <summary>The status cheats that are on, for the card's note.</summary>
     private string Flags()
     {
         var on = new List<string>(4);
@@ -279,7 +286,7 @@ internal sealed class Status : Module
             on.Add("DMG " + d.State);
         if (_regen.Value > 0f)
             on.Add("REGEN");
-        return on.Count == 0 ? "STATUS" : string.Join("  ", on);
+        return string.Join("  ", on);
     }
 
     // The game has no getter for the current armour, only the CurrentArmourLevels array it indexes by type.
@@ -294,21 +301,6 @@ internal sealed class Status : Module
         {
             return 0;
         }
-    }
-
-    private static void Meter(float left, float right, float y, float w, string label, int value, int max)
-    {
-        Gfx.Text(left, y, label, Theme.Mid, 0.56f);
-        Gfx.TextRight(right, y + Gfx.S(5f), max > 0 ? Math.Max(0, value) + " / " + max : "-", Theme.Hi, 0.56f);
-        Bar(left, y + Gfx.S(14f), w, max > 0 ? (float)value / max : 0f);
-    }
-
-    private static void Bar(float x, float y, float w, float fraction)
-    {
-        float h = Gfx.S(4f);
-        Gfx.Rect(x, y, w, h, Theme.Mid, 0.25f);
-        fraction = float.IsNaN(fraction) ? 0f : Math.Clamp(fraction, 0f, 1f);
-        Gfx.Rect(x, y, w * fraction, h, Theme.Accent, 0.95f);
     }
 
     private static string Whole(float v) => MathF.Round(v).ToString(CultureInfo.InvariantCulture);

@@ -204,7 +204,7 @@ internal static class Layout
             new("SHOW", "esp_enemies", "esp_friendlies", "esp_vehicles", "esp_turrets", "esp_props", "esp_movers", "esp_pickups"),
             new("MILITIA THREATS", "city_threat_esp", "city_threat_esp_range"),
             new("BODYGUARDS", "guard_markers"),
-            new("STYLE", "esp_boxes", "esp_tracers", "esp_details", "esp_range", "esp_max"),
+            new("STYLE", "esp_aim_card", "esp_labels", "esp_size", "esp_boxes", "esp_tracers", "esp_details", "esp_range", "esp_max"),
         }),
         ("HUD/OVERLAYS", new Section[]
         {
@@ -213,6 +213,7 @@ internal static class Layout
             new("SPEEDOMETER", "batmobile_speedometer", "batmobile_speed_units", "batmobile_trip_stats", "batmobile_trip_reset"),
             new("CAMERA", "fov_readout"),
             new("MENU", "active_list"),
+            new("STYLE", "overlay_size"),
             new("GAME HUD", "vehicle_radar_on_foot"),
         }),
         ("CAMERA/GENERAL", new Section[]

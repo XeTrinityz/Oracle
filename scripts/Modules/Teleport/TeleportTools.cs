@@ -474,19 +474,70 @@ internal sealed class TeleportTools : Module
         Overlay.Notice(NoticeTitle, "WRITTEN TO ORACLE.LOG", true);
     }
 
+    private const float TapeH = 24f;
+    private const float TapeSpan = 70f;
+
+    /// <summary>LOCATION: the district, your position as three fields, and a heading tape.</summary>
     public override void Draw(Canvas c)
     {
         if (World.Pawn is not { } pawn)
             return;
 
-        const float width = 250f;
-        const float height = 68f;
         float heading = ((pawn.Rotation.Yaw % 360f) + 360f) % 360f;
-        float x = Gfx.S(28f);
-        float y = Gfx.S(150f);
-        Gfx.Panel(x, y, Gfx.S(width), Gfx.S(height));
-        Gfx.Text(x + Gfx.S(14f), y + Gfx.S(9f), DistrictOf(pawn.Location), Theme.Accent, 0.66f);
-        Gfx.Text(x + Gfx.S(14f), y + Gfx.S(27f), Fmt.Position(pawn.Location), Theme.Hi, 0.66f);
-        Gfx.Text(x + Gfx.S(14f), y + Gfx.S(45f), "HEADING " + heading.ToString("0", CultureInfo.InvariantCulture), Theme.Mid, 0.66f);
+        Vector3 at = pawn.Location;
+        float w = Hud.U(Hud.CardW);
+        float body = Gfx.TextH(Hud.Sc(Hud.ValueScale)) + Hud.U(8) + Hud.FieldH + Hud.U(8) + Hud.U(TapeH);
+        float h = Hud.Height(body);
+        var (x, y, age) = Hud.Place("location", Hud.Side.Left, 0, w, h);
+        float top = Hud.Card(x, y, w, h, "LOCATION", "HEADING " + Whole(heading), Theme.Mid, age);
+
+        float left = x + Hud.U(Hud.Pad), inner = w - Hud.U(Hud.Pad) * 2f;
+        Gfx.Text(left, top, DistrictOf(at), Theme.Hi, Hud.Sc(Hud.ValueScale));
+        top += Gfx.TextH(Hud.Sc(Hud.ValueScale)) + Hud.U(8);
+
+        float gap = Hud.U(6), fw = (inner - gap * 2f) / 3f;
+        Hud.Field(left, top, fw, "X", Whole(at.X), Theme.Hi);
+        Hud.Field(left + fw + gap, top, fw, "Y", Whole(at.Y), Theme.Hi);
+        Hud.Field(left + (fw + gap) * 2f, top, fw, "Z", Whole(at.Z), Theme.Hi);
+        top += Hud.FieldH + Hud.U(8);
+        Tape(left, top, inner, Hud.U(TapeH), heading);
+    }
+
+    private static string Whole(float v) => MathF.Round(v).ToString("0", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// A heading tape, like an aircraft's: degree ticks slide under a fixed mark in the middle, numbered every 45 and
+    /// fading toward the ends.
+    /// </summary>
+    private static void Tape(float x, float y, float w, float h, float heading)
+    {
+        Gfx.Rect(x, y, w, h, Theme.Black, 0.3f);
+        float cx = x + w * 0.5f;
+        float perDegree = w * 0.5f / TapeSpan;
+        float t = MathF.Max(1f, Gfx.S(1));
+        int first = (int)MathF.Ceiling((heading - TapeSpan) / 15f);
+        int last = (int)MathF.Floor((heading + TapeSpan) / 15f);
+        for (int k = first; k <= last; k++)
+        {
+            float a = k * 15f;
+            float off = a - heading;
+            float fade = Math.Clamp(1f - MathF.Abs(off) / TapeSpan, 0f, 1f);
+            float tx = MathF.Round(cx + off * perDegree);
+            bool major = ((k % 3) + 3) % 3 == 0;
+            float th = major ? h * 0.38f : h * 0.2f;
+            Gfx.Rect(tx, y + h - th, t, th, Theme.Mid, (major ? 0.85f : 0.45f) * fade);
+            if (major)
+            {
+                string label = ((int)(((a % 360f) + 360f) % 360f)).ToString(CultureInfo.InvariantCulture);
+                Gfx.TextCentre(tx, y + Hud.U(2), label, Theme.Mid, Hud.Sc(Hud.SmallScale * 0.9f), fade);
+            }
+        }
+
+        Gfx.Rect(cx - t, y + h * 0.5f, t * 2f, h * 0.5f, Theme.Accent, 0.95f);
+        Rgba under = Shapes.Under;
+        Shapes.Under = Theme.Panel;
+        float s = Hud.U(4.5f);
+        Shapes.Triangle(cx - s, y + h, cx + s, y + h, cx, y + h - s * 1.2f, Theme.Accent, 1f);
+        Shapes.Under = under;
     }
 }

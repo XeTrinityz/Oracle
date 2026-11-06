@@ -40,6 +40,7 @@ internal static class WorldView
         if (Ready && _frame == Gfx.Frame)
             return;
         _frame = Gfx.Frame;
+        Lens.NewFrame();
 
         Ready = false;
         if (World.Pc is not { } pc)

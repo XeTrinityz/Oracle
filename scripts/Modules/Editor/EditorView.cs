@@ -2,26 +2,35 @@ using System.Globalization;
 using System.Numerics;
 using BmSDK.Engine;
 using static CeZeY.Oracle.Gfx;
+using static CeZeY.Oracle.Lens;
 
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// Draws the editor over the world: a box, name and tracer for each marked object (one DrawTris per colour for all
-/// the lines), a white bracket on what SELECT AIMED would take, and the selected object's wireframe and card.
+/// Draws the editor over the world in the ORACLE LENS look (see <see cref="Lens"/>): corner brackets round each
+/// marked object (a diamond over it with BOXES off), name plates that carry more the closer it is, a card for
+/// whatever you aim at, a white lock on what SELECT AIMED would take, and the selected object's wireframe and card.
+/// All the brackets and diamonds of one colour go to the game in one batch.
 /// </summary>
 internal static class EditorView
 {
-    private const float Metre = 100f;
+    private const float NearRange = 3000f;
     private const float DetailRange = 6000f;
-    private const float NameScale = 0.58f;
-    private const float DetailScale = 0.5f;
-    private const float MinBox = 6f;
+    private const float MinFrame = 14f;
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    private readonly record struct Shown(Thing T, float X0, float Y0, float X1, float Y1, bool Removed);
+    private readonly record struct Shown(Thing T, float X0, float Y0, float X1, float Y1, bool Removed, float Dist, Tier Tier, float Age, bool Framed);
 
     private static readonly List<Shown> _shown = new();
+    private static readonly List<(string, Rgba)> _lines = new();
+    private static readonly HashSet<nint> _aboard = new();
+    private static readonly Dictionary<nint, List<Pawn>> _crews = new();
+    private static readonly Stack<List<Pawn>> _pool = new();
+    private static readonly List<Pawn> _scratch = new();
+    private static readonly List<(float X, float Y, bool Hostile)> _pips = new();
+    private static nint _aimPtr;
+    private static double _aimSince;
 
     public static void Draw(WorldEditor ed, Canvas canvas)
     {
@@ -30,44 +39,85 @@ internal static class EditorView
             return;
 
         Alpha = 1f;
+        Discard();
         Thing? sel = ed.Selected;
+        CollectCrews(ed);
 
         _shown.Clear();
         int marked = 0;
         foreach (Thing t in ed.Visible)
         {
-            // Spawned bodyguards wear the spawner's own marker instead.
-            if (t == sel || !ed.Shows(t.Kind) || !t.Alive || Spawner.I.IsBodyguard(t.Ptr))
+            // Spawned bodyguards and militia threats wear their own markers instead.
+            if (t == sel || !ed.Shows(t.Kind) || !t.Alive || Spawner.I.IsBodyguard(t.Ptr) || Population.I.Marks(t.Ptr))
+                continue;
+
+            // Someone riding in a marked vehicle is shown as part of it (its crew pips and card), not as a box inside a box.
+            if (t.Kind is ThingKind.Enemy or ThingKind.Friendly && _aboard.Contains(t.Ptr))
                 continue;
             if (++marked > ed.MostShown)
                 break;
 
             Vector3 at = t.Actor.Location;
-            if (WorldView.Bounds(at + t.Min, at + t.Max, out float x0, out float y0, out float x1, out float y1))
-                _shown.Add(new Shown(t, x0, y0, x1, y1, Edits.Find(t)?.Removed ?? false));
+            if (!WorldView.Bounds(at + t.Min, at + t.Max, out float x0, out float y0, out float x1, out float y1))
+                continue;
+
+            float dist = Vector3.Distance(WorldView.Eye, t.Centre);
+            bool framed = ed.Boxes;
+            if (framed)
+            {
+                // Every marked object gets brackets: a far-off one (or one seen from straight above) keeps a box big
+                // enough to read, rather than turning into something else.
+                Grow(ref x0, ref x1, L(MinFrame * 0.75f));
+                Grow(ref y0, ref y1, L(MinFrame));
+            }
+
+            Offer(t.Ptr, x0, y0, x1, y1);
+            _shown.Add(new Shown(t, x0, y0, x1, y1, Edits.Find(t)?.Removed ?? false, dist, TierOf(t.Ptr, dist, NearRange, DetailRange), Age(t.Ptr), framed));
         }
 
-        float thick = MathF.Max(1f, S(1.5f));
-        if (ed.Boxes || ed.Tracers)
+        // Washes first (plain tiles), then every bracket and diamond, one batch per colour, then tracers and labels on top.
+        foreach (Shown s in _shown)
         {
-            for (int k = 0; k < Things.KindCount; k++)
-            {
-                Lines(ed, (ThingKind)k, false, thick);
-                Lines(ed, (ThingKind)k, true, thick);
-            }
+            // No wash over something that fills much of the screen: it would tint the whole view.
+            if (s.Framed && s.Tier >= Tier.Full && (s.X1 - s.X0) * (s.Y1 - s.Y0) < W * H * 0.15f)
+                Wash(s.X0, s.Y0, s.X1, s.Y1, ColourOf(s.T, s.Removed), 0.06f * Settle(s.Age));
         }
+
+        for (int k = 0; k < Things.KindCount; k++)
+        {
+            Markers((ThingKind)k, false);
+            Markers((ThingKind)k, true);
+        }
+
+        foreach (Shown s in _shown)
+        {
+            if (_crews.TryGetValue(s.T.Ptr, out List<Pawn>? crew))
+                Crew.Pips(crew, (s.X0 + s.X1) * 0.5f, s.Y0 - (s.Framed ? L(11) : L(19)), _pips);
+        }
+
+        Crew.FlushPips(_pips);
+
+        if (ed.Tracers)
+            Tracers();
 
         foreach (Shown s in _shown)
             Label(s, ed.Details);
 
-        if (ed.Picking && ed.Aimed() is { } aimed && aimed != sel)
+        foreach (Shown s in _shown)
+        {
+            if (s.Tier == Tier.Card)
+                FocusCard(s, ed.Details);
+        }
+
+        Thing? aimed = ed.Picking ? ed.Aimed() : null;
+        if (aimed != null && aimed != sel)
             Bracket(aimed);
 
         if (sel != null)
             DrawSelected(ed, sel);
 
         if (ed.Picking)
-            Reticle();
+            Reticle(aimed != null);
 
         if (ed.ModeOn && ed.Picking)
             Controls(ed);
@@ -81,74 +131,71 @@ internal static class EditorView
 
     private static readonly string[] HeldKeys = { "W S  PUSH PULL", "Q E  TURN", "LET GO  DROP", "FLICK AS YOU LET GO  THROW" };
 
-    /// <summary>The key guide along the bottom of the screen while editor mode is on.</summary>
+    private static readonly List<(string, string)> KeyPairs = Hud.Pairs(Keys);
+    private static readonly List<(string, string)> HeldPairs = Hud.Pairs(HeldKeys);
+
+    /// <summary>The key guide along the bottom of the screen while editor mode is on: an overlay card of key chips.</summary>
     private static void Controls(WorldEditor ed)
     {
-        string[] keys = ed.Grabbing ? HeldKeys : Keys;
-        const float scale = 0.5f;
-        float gap = S(22);
-        float w = -gap;
-        foreach (string k in keys)
-            w += TextW(k, scale) + gap;
-
+        List<(string, string)> keys = ed.Grabbing ? HeldPairs : KeyPairs;
         string title = ed.Grabbing ? "HOLDING" : "EDITOR MODE";
-        float th = TextH(0.6f), kh = TextH(scale);
-        float pad = S(10);
-        float pw = MathF.Max(w, TextW(title, 0.6f)) + pad * 2f;
-        float ph = th + kh + pad * 2f + S(4);
-        float x = (W - pw) * 0.5f;
-        float y = H - ph - S(28);
-        Panel(x, y, pw, ph, 0.8f);
-        Text(x + pad, y + pad, title, Theme.Accent, 0.6f);
-        float kx = x + pad;
-        float ky = y + pad + th + S(4);
-        foreach (string k in keys)
-        {
-            Text(kx, ky, k, Theme.Mid, scale);
-            kx += TextW(k, scale) + gap;
-        }
+
+        // SELECT FROM narrows what a click can pick; said here, so a filter left on isn't mistaken for a broken editor.
+        string filter = ed.PickFilter.Length > 0 ? "SELECTING " + ed.PickFilter + " ONLY" : "";
+        float want = 0f;
+        foreach ((string k, string a) in keys)
+            want += Hud.ChipW(k) + Hud.U(6) + TextW(a, Hud.Sc(Hud.BodyScale * 0.92f)) + Hud.U(14);
+        float inner = MathF.Min(want, W * 0.7f);
+        float w = inner + Hud.U(Hud.Pad) * 2f;
+        float h = Hud.Height(Hud.Keys(0f, 0f, inner, keys, false));
+        float x = MathF.Round((W - w) * 0.5f);
+        float y = MathF.Round(H - h - S(28));
+        float top = Hud.Card(x, y, w, h, title, filter, Theme.Signal, 1f);
+        Hud.Keys(x + Hud.U(Hud.Pad), top, inner, keys);
     }
 
-    private static Rgba ColourOf(Thing t, bool removed)
+    private static Rgba ColourOf(Thing t, bool removed) => ColourOf(t.Kind, removed);
+
+    private static Rgba ColourOf(ThingKind kind, bool removed)
     {
-        Rgba c = Things.Colors[(int)t.Kind];
-        return removed ? Rgba.Mix(c, Theme.Black, 0.55f) : c;
+        Rgba c = Things.Colors[(int)kind];
+        return removed ? Rgba.Mix(c, Dormant, 0.7f) : c;
     }
 
-    /// <summary>Every box and tracer of one kind and state in a single call.</summary>
-    private static void Lines(WorldEditor ed, ThingKind kind, bool removed, float thick)
+    /// <summary>
+    /// Who rides in each marked vehicle, read fresh each frame, and everyone aboard any vehicle an ESP marks (this one's
+    /// or THREAT ESP's), so their own markers stand down.
+    /// </summary>
+    private static void CollectCrews(WorldEditor ed)
     {
-        Thing? first = null;
-        foreach (Shown s in _shown)
+        foreach (List<Pawn> l in _crews.Values)
         {
-            if (s.T.Kind != kind || s.Removed != removed)
-                continue;
-
-            first ??= s.T;
-            if (ed.Boxes)
-                QueueRect(s.X0, s.Y0, s.X1, s.Y1, thick);
-            if (ed.Tracers)
-                Shapes.QueueLine(W * 0.5f, 0f, (s.X0 + s.X1) * 0.5f, s.Y0, thick * 0.75f);
+            l.Clear();
+            _pool.Push(l);
         }
 
-        if (first != null)
-            Shapes.FlushLines(ColourOf(first, removed));
+        _crews.Clear();
+        _aboard.Clear();
+        if (ed.Shows(ThingKind.Vehicle))
+        {
+            foreach (Thing t in ed.Visible)
+            {
+                if (t.Kind != ThingKind.Vehicle || !t.Alive || t.Actor is not Vehicle || Crew.Of(t.Actor, _scratch) == 0)
+                    continue;
+
+                List<Pawn> crew = _pool.Count > 0 ? _pool.Pop() : new List<Pawn>();
+                crew.AddRange(_scratch);
+                _crews[t.Ptr] = crew;
+                foreach (Pawn p in _scratch)
+                    _aboard.Add(p.Ptr);
+            }
+        }
+
+        Population.I.AddCrews(_aboard);
     }
 
-    private static void QueueRect(float x0, float y0, float x1, float y1, float thick)
+    private static void Grow(ref float a, ref float b, float min)
     {
-        Grow(ref x0, ref x1);
-        Grow(ref y0, ref y1);
-        Shapes.QueueLine(x0, y0, x1, y0, thick);
-        Shapes.QueueLine(x1, y0, x1, y1, thick);
-        Shapes.QueueLine(x1, y1, x0, y1, thick);
-        Shapes.QueueLine(x0, y1, x0, y0, thick);
-    }
-
-    /// <summary>Keeps a far-off object's box big enough to see.</summary>
-    private static void Grow(ref float a, ref float b)
-    {
-        float min = S(MinBox);
         if (b - a >= min)
             return;
 
@@ -157,78 +204,143 @@ internal static class EditorView
         b = mid + min * 0.5f;
     }
 
+    // ---- markers
+
+    /// <summary>Every bracket and diamond of one kind and state in a single batch.</summary>
+    private static void Markers(ThingKind kind, bool removed)
+    {
+        float thick = MathF.Max(1.5f, L(1.75f));
+        bool any = false;
+        foreach (Shown s in _shown)
+        {
+            if (s.T.Kind != kind || s.Removed != removed)
+                continue;
+
+            any = true;
+            float settle = Settle(s.Age);
+            float cx = (s.X0 + s.X1) * 0.5f;
+            if (s.Framed)
+            {
+                // New markers settle in from a little wider, like the menu's rows easing into place.
+                float pad = L(3f) + L(10f) * (1f - settle);
+                Brackets(s.X0 - pad, s.Y0 - pad, s.X1 + pad, s.Y1 + pad, L(12f), thick);
+            }
+            else
+            {
+                Diamond(cx, s.Y0 - L(7f), L(4.5f) * (0.5f + 0.5f * settle));
+            }
+        }
+
+        if (any)
+            Flush(ColourOf(kind, removed));
+    }
+
+    /// <summary>Thin lines from a notch at the top of the screen to each marked object, one batch per colour.</summary>
+    private static void Tracers()
+    {
+        float ox = W * 0.5f;
+        Rect(ox - L(16), 0f, L(32), MathF.Max(2f, L(2)), Theme.Accent, 0.9f);
+        float thick = MathF.Max(1f, L(1f));
+        for (int k = 0; k < Things.KindCount * 2; k++)
+        {
+            var kind = (ThingKind)(k >> 1);
+            bool removed = (k & 1) == 1;
+            bool any = false;
+            foreach (Shown s in _shown)
+            {
+                if (s.T.Kind != kind || s.Removed != removed)
+                    continue;
+                any = true;
+                Line(ox, L(2), (s.X0 + s.X1) * 0.5f, s.Framed ? s.Y0 - L(3) : s.Y0 - L(12), thick);
+            }
+
+            if (any)
+                Flush(ColourOf(kind, removed), rim: false);
+        }
+    }
+
     // ---- labels
+
+    private static float MeterH => MathF.Max(3f, L(3.5f));
 
     private static void Label(Shown s, bool details)
     {
+        if (s.Tier is Tier.Mark or Tier.Card)
+            return;
+
         Thing t = s.T;
         Rgba col = ColourOf(t, s.Removed);
+        float settle = Settle(s.Age);
         float cx = (s.X0 + s.X1) * 0.5f;
         string name = s.Removed ? t.Name + "  REMOVED" : t.Name;
-        float h = TextH(NameScale);
-        float y = s.Y0 - h - S(4);
-        Tag(cx, y, name, col, NameScale);
+        string info = details ? Metres(s.Dist) : "";
+        float top = s.Framed ? s.Y0 - L(6) : s.Y0 - L(14);
+        if (_crews.ContainsKey(t.Ptr))
+            top -= L(12);
 
-        float dist = Vector3.Distance(WorldView.Eye, t.Centre);
-        if (!details || dist > DetailRange)
-            return;
-
-        string line = Fmt.Metres(dist / Metre);
-        if (t.Actor is BmSDK.Engine.Pawn p && p.HealthMax > 0)
+        bool meter = s.Tier == Tier.Full && details && t.Actor is Pawn { HealthMax: > 0 };
+        if (!meter)
         {
-            line += "  " + Math.Max(0, p.Health) + " HP";
-            HealthBar(s.X0, s.Y0, s.Y1, p.Health, p.HealthMax, col);
+            Plate(cx, top, name, info, col, settle);
+            return;
         }
 
-        Tag(cx, s.Y1 + S(3), line, Theme.Mid, DetailScale);
+        var p = (Pawn)t.Actor;
+        float frac = Math.Max(0, p.Health) / (float)p.HealthMax;
+        var (x, w, _) = Plate(cx, top - MeterH - L(2), name, info, col, settle);
+        Meter(x, top - MeterH, w, MeterH, frac, Trail(t.Ptr, frac), col, 8);
     }
 
-    /// <summary>Text centred on x over a dark strip, so it reads against any background.</summary>
-    private static void Tag(float cx, float y, string text, Rgba col, float scale)
+    /// <summary>The lock and card on whatever is nearest the middle of the screen.</summary>
+    private static void FocusCard(Shown s, bool details)
     {
-        float w = TextW(text, scale);
-        float h = TextH(scale);
-        Rect(cx - w * 0.5f - S(4), y, w + S(8), h, Theme.Black, 0.45f);
-        Text(cx - w * 0.5f, y, text, col, scale);
+        Thing t = s.T;
+        Rgba col = ColourOf(t, s.Removed);
+        Lock(s.X0, s.Y0, s.X1, s.Y1, Theme.Accent, FocusAge);
+
+        _lines.Clear();
+        string where = Metres(s.Dist) + " AWAY";
+        float health = -1f, trail = -1f;
+        if (t.Actor is Pawn p && p.HealthMax > 0)
+        {
+            where += "   " + Math.Max(0, p.Health) + " / " + p.HealthMax + " HP";
+            health = Math.Max(0, p.Health) / (float)p.HealthMax;
+            trail = Trail(t.Ptr, health);
+        }
+
+        _lines.Add((where, Theme.Mid));
+        if (_crews.TryGetValue(t.Ptr, out List<Pawn>? crew))
+            Crew.Lines(crew, _lines);
+        if (details)
+            _lines.Add((ClassName(t.Actor), Theme.Low));
+        if (s.Removed)
+            _lines.Add(("REMOVED", Theme.Signal));
+
+        float pad = L(4);
+        Card((s.X0 + s.X1) * 0.5f, (s.Y0 + s.Y1) * 0.5f, s.X1 + pad, s.Y0 - pad, t.KindLabel, t.Name, _lines, col, health, trail, FocusAge);
     }
 
-    private static void HealthBar(float x0, float y0, float y1, int health, int max, Rgba col)
-    {
-        float h = y1 - y0;
-        if (h < S(14))
-            return;
-
-        float frac = Math.Clamp(health / (float)Math.Max(1, max), 0f, 1f);
-        float bx = x0 - S(6);
-        Rect(bx, y0, S(3), h, Theme.Black, 0.6f);
-        Rect(bx, y1 - h * frac, S(3), h * frac, frac > 0.35f ? col : Theme.Warn);
-    }
+    private static string ClassName(Actor a) => a.Class is { } c ? c.Name.ToString().ToUpperInvariant() : "";
 
     // ---- aim and selection
 
+    /// <summary>A white lock on what SELECT AIMED would take, with its name beneath.</summary>
     private static void Bracket(Thing t)
     {
         Vector3 at = t.Actor.Location;
         if (!WorldView.Bounds(at + t.Min, at + t.Max, out float x0, out float y0, out float x1, out float y1))
             return;
 
-        float pad = S(6);
-        x0 -= pad;
-        y0 -= pad;
-        x1 += pad;
-        y1 += pad;
-        float arm = MathF.Min(S(14), MathF.Min(x1 - x0, y1 - y0) * 0.4f);
-        float thick = MathF.Max(1f, S(2f));
-        Shapes.QueueLine(x0, y0, x0 + arm, y0, thick);
-        Shapes.QueueLine(x0, y0, x0, y0 + arm, thick);
-        Shapes.QueueLine(x1, y0, x1 - arm, y0, thick);
-        Shapes.QueueLine(x1, y0, x1, y0 + arm, thick);
-        Shapes.QueueLine(x0, y1, x0 + arm, y1, thick);
-        Shapes.QueueLine(x0, y1, x0, y1 - arm, thick);
-        Shapes.QueueLine(x1, y1, x1 - arm, y1, thick);
-        Shapes.QueueLine(x1, y1, x1, y1 - arm, thick);
-        Shapes.FlushLines(Theme.White);
-        Tag((x0 + x1) * 0.5f, y1 + S(4), "SELECT  " + t.Name, Theme.Hi, DetailScale);
+        if (t.Ptr != _aimPtr)
+        {
+            _aimPtr = t.Ptr;
+            _aimSince = Time;
+        }
+
+        float age = (float)(Time - _aimSince);
+        Lock(x0, y0, x1, y1, Theme.Hi, age);
+        float h = TextH(NameScale * Size) + L(3);
+        Plate((x0 + x1) * 0.5f, y1 + L(12) + h, "SELECT  " + t.Name, t.KindLabel, Theme.Hi, Settle(age));
     }
 
     private static void DrawSelected(WorldEditor ed, Thing t)
@@ -239,63 +351,52 @@ internal static class EditorView
         bool seen = WorldView.Bounds(at + t.Min, at + t.Max, out float x0, out float y0, out float x1, out float y1);
         if (!front || !seen)
         {
-            EdgeMarker(t);
+            Edge(t.Centre, Theme.Accent, t.Name + "  " + Metres(Vector3.Distance(WorldView.Eye, t.Centre)));
             return;
         }
 
-        // The twelve edges of the box: corners whose index differs by one bit (one axis) are joined.
-        float thick = MathF.Max(1.5f, S(2.5f));
+        Rgba accent = Theme.Accent;
+        if ((x1 - x0) * (y1 - y0) < W * H * 0.15f)
+            Wash(x0, y0, x1, y1, accent, 0.05f);
+
+        // The twelve edges of the box, corners whose index differs by one bit (one axis), with a node on each corner.
+        float thick = MathF.Max(1.5f, L(2f));
         for (int i = 0; i < 8; i++)
         {
             for (int bit = 1; bit < 8; bit <<= 1)
             {
                 int j = i | bit;
                 if (j != i)
-                    Shapes.QueueLine(c[i].X, c[i].Y, c[j].X, c[j].Y, thick);
+                    Line(c[i].X, c[i].Y, c[j].X, c[j].Y, thick);
             }
         }
 
-        Shapes.FlushLines(Theme.Accent);
-        Card(ed, t, x1 + S(14), y0);
-    }
+        float node = MathF.Max(2f, L(3f));
+        for (int i = 0; i < 8; i++)
+            Diamond(c[i].X, c[i].Y, node);
+        Flush(accent);
 
-    private static void Card(WorldEditor ed, Thing t, float x, float y)
-    {
+        _lines.Clear();
         Actor a = t.Actor;
-        var lines = new List<(string Text, Rgba Col, float Scale)>
+        string where = Metres(Vector3.Distance(WorldView.Eye, t.Centre)) + " AWAY";
+        float health = -1f, trail = -1f;
+        if (a is Pawn p && p.HealthMax > 0)
         {
-            (t.Name, Theme.Hi, 0.68f),
-            (t.KindLabel + "  " + a.Class.Name.ToString().ToUpperInvariant(), Theme.Low, 0.48f),
-        };
-
-        string where = Fmt.Metres(Vector3.Distance(WorldView.Eye, t.Centre) / Metre) + " AWAY";
-        if (a is BmSDK.Engine.Pawn p && p.HealthMax > 0)
             where += "   " + Math.Max(0, p.Health) + " / " + p.HealthMax + " HP";
-        lines.Add((where, Theme.Mid, 0.52f));
-        lines.Add(("AT " + Fmt.Position(a.Location), Theme.Low, 0.48f));
+            health = Math.Max(0, p.Health) / (float)p.HealthMax;
+            trail = Trail(t.Ptr, health);
+        }
 
+        _lines.Add((where, Theme.Mid));
+        if (Crew.Of(a, _scratch) > 0)
+            Crew.Lines(_scratch, _lines);
+        _lines.Add(("AT " + Fmt.Position(a.Location), Theme.Low));
+        _lines.Add((ClassName(a), Theme.Low));
         string flags = Flags(ed, t);
         if (flags.Length > 0)
-            lines.Add((flags, Theme.Signal, 0.5f));
+            _lines.Add((flags, Theme.Signal));
 
-        float pad = S(10);
-        float w = 0f, h = pad * 2f;
-        foreach (var l in lines)
-        {
-            w = MathF.Max(w, TextW(l.Text, l.Scale));
-            h += TextH(l.Scale) + S(2);
-        }
-
-        w += pad * 2f;
-        x = Math.Clamp(x, S(8), W - w - S(8));
-        y = Math.Clamp(y, S(8), H - h - S(8));
-        Panel(x, y, w, h, 0.82f);
-        float ly = y + pad;
-        foreach (var l in lines)
-        {
-            Text(x + pad, ly, l.Text, l.Col, l.Scale);
-            ly += TextH(l.Scale) + S(2);
-        }
+        Card((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, x1, y0, "SELECTED  " + t.KindLabel, t.Name, _lines, accent, health, trail, Age(t.Ptr));
     }
 
     private static string Flags(WorldEditor ed, Thing t)
@@ -320,38 +421,5 @@ internal static class EditorView
         if (t.Fixed)
             f.Add("PART OF THE LEVEL");
         return string.Join("  ", f);
-    }
-
-    /// <summary>An arrow at the screen edge toward a selected object that is off screen or behind you.</summary>
-    private static void EdgeMarker(Thing t)
-    {
-        Vector3 v = t.Centre - WorldView.Eye;
-        float rx = Vector3.Dot(v, WorldView.Right);
-        float uy = Vector3.Dot(v, WorldView.Up);
-        if (MathF.Abs(rx) < 0.001f && MathF.Abs(uy) < 0.001f)
-            rx = 1f;
-
-        float cx = W * 0.5f, cy = H * 0.5f;
-        float margin = S(60);
-        float len = MathF.Sqrt(rx * rx + uy * uy);
-        float dx = rx / len, dy = -uy / len;
-        float sx = dx == 0f ? float.MaxValue : (cx - margin) / MathF.Abs(dx);
-        float sy = dy == 0f ? float.MaxValue : (cy - margin) / MathF.Abs(dy);
-        float r = MathF.Min(sx, sy);
-        float px = cx + dx * r, py = cy + dy * r;
-
-        float size = S(12);
-        float nx = -dy, ny = dx;
-        Shapes.Triangle(px + dx * size, py + dy * size, px + nx * size * 0.6f, py + ny * size * 0.6f, px - nx * size * 0.6f, py - ny * size * 0.6f, Theme.Accent, 1f);
-        string label = t.Name + "  " + Fmt.Metres(v.Length() / Metre);
-        Tag(px - dx * S(28), py - dy * S(28) - TextH(DetailScale) * 0.5f, label, Theme.Hi, DetailScale);
-    }
-
-    private static void Reticle()
-    {
-        float cx = W * 0.5f, cy = H * 0.5f;
-        float l = S(7), t = MathF.Max(1f, S(2));
-        Rect(cx - l, cy - t * 0.5f, l * 2f, t, Theme.White, 0.85f);
-        Rect(cx - t * 0.5f, cy - l, t, l * 2f, Theme.White, 0.85f);
     }
 }

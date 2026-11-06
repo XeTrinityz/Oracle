@@ -7,9 +7,10 @@ using static CeZeY.Oracle.Gfx;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// The marker over each spawned bodyguard: a chevron above the head with a health bar, coloured by what he's doing
-/// (with you, fighting, knocked out), and an arrow at the screen edge pointing to one that's off screen. Bodyguards
-/// get this instead of the world editor's ESP box, unless you select one in the editor yourself.
+/// The marker over each spawned bodyguard, in the ORACLE LENS look (see <see cref="Lens"/>): a chevron above the head
+/// with a segmented health meter, coloured by what they're doing (with you, fighting, knocked out), their name and
+/// state close by, a card when you aim at one, and an arrow at the screen edge pointing to one that's off screen.
+/// Bodyguards get this instead of the world editor's ESP box, unless you select one in the editor yourself.
 /// </summary>
 internal sealed partial class Spawner
 {
@@ -21,8 +22,7 @@ internal sealed partial class Spawner
 
     private static readonly Rgba GuardIdle = new(84, 230, 140);
     private static readonly Rgba GuardFighting = new(255, 186, 64);
-    private static readonly Rgba GuardDown = new(120, 130, 132);
-    internal static readonly Rgba MarkerEdge = new(8, 14, 18);
+    private static readonly Rgba GuardDown = Lens.Dormant;
 
     private readonly HashSet<nint> _guardPtrs = new();
     private Toggle _markers = null!;
@@ -57,85 +57,93 @@ internal sealed partial class Spawner
             return;
 
         Alpha = 1f;
+        Lens.Discard();
         Thing? selected = WorldEditor.I.Selected;
+        Spawn? focus = null;
+        Vector2 focusAt = default;
         foreach (Spawn s in _spawns)
         {
             if (!s.Bodyguard || !s.Alive || s.Actor is not RBMPawnAI p || p.bPendingDelete || (selected != null && selected.Ptr == s.Ptr))
                 continue;
-            Marker(p, me);
+            if (Marker(s, p, me, out Vector2 at))
+            {
+                focus = s;
+                focusAt = at;
+            }
         }
+
+        if (focus is { Actor: RBMPawnAI fp } f)
+            FocusCard(f, fp, me, focusAt);
     }
 
-    private static void Marker(RBMPawnAI p, Pawn me)
+    private static bool Down(RBMPawnAI p) => p.Health <= 0 || p is RPawnVillain { bGoodAsDead: true };
+
+    private static Rgba GuardColour(RBMPawnAI p, bool down) => down ? GuardDown : Npcs.I.IsFighting(p.Ptr) ? GuardFighting : GuardIdle;
+
+    private static string GuardState(RBMPawnAI p, bool down) => down ? "DOWN" : Npcs.I.IsFighting(p.Ptr) ? "FIGHTING" : "WITH YOU";
+
+    /// <summary>
+    /// A chevron over the head with a segmented health meter, its name and state close by, and an arrow at the screen
+    /// edge once it's out of view. True when it has the focus, so its card is drawn last.
+    /// </summary>
+    private static bool Marker(Spawn s, RBMPawnAI p, Pawn me, out Vector2 at)
     {
-        bool down = p.Health <= 0 || p is RPawnVillain { bGoodAsDead: true };
-        Rgba col = down ? GuardDown : Npcs.I.IsFighting(p.Ptr) ? GuardFighting : GuardIdle;
+        bool down = Down(p);
+        Rgba col = GuardColour(p, down);
         float height = p.CylinderComponent is { IsValid: true } cyl ? cyl.CollisionHeight : 90f;
         Vector3 head = p.Location + Vector3.UnitZ * (height * p.DrawScale + MarkerAbove);
         float dist = Vector3.Distance(head, WorldView.Eye);
+        float away = Vector3.Distance(p.Location, me.Location);
 
-        if (WorldView.ToScreen(head, out Vector2 at) && WorldView.OnScreen(at, -S(12)))
+        if (!WorldView.ToScreen(head, out at) || !WorldView.OnScreen(at, -S(12)))
         {
-            // Big up close, small far off, and a slow bob so it reads as a marker rather than part of the world.
-            float near = Math.Clamp((MarkerFar - dist) / (MarkerFar - MarkerNear), 0f, 1f);
-            float size = S(7f + 7f * near);
-            float bob = MathF.Sin((float)Time * 3f + p.Ptr % 7) * S(2.5f);
-            float y = at.Y - size * 0.4f + bob;
-            Chevron(at.X, y, size, col);
-            Health(p, at.X, y - size * 1.25f - S(6), size, col, down);
-            if (dist > LabelRange)
-                TextCentre(at.X, y + S(3), Fmt.Metres(Vector3.Distance(p.Location, me.Location) / Metre), col, 0.45f);
-            return;
+            if (!down && away <= EdgeRange)
+                Lens.Edge(head, col, s.Label + "  " + Lens.Metres(away));
+            return false;
         }
 
-        if (!down && Vector3.Distance(p.Location, me.Location) <= EdgeRange)
-            EdgeArrow(head, col);
+        // Big up close, small far off, and a slow bob so it reads as a marker rather than part of the world.
+        float near = Math.Clamp((MarkerFar - dist) / (MarkerFar - MarkerNear), 0f, 1f);
+        float settle = Lens.Settle(Lens.Age(p.Ptr));
+        float size = Lens.L(6f + 6f * near) * (0.6f + 0.4f * settle);
+        float bob = MenuView.Effects ? MathF.Sin((float)Time * 3f + p.Ptr % 7) * S(2f) : 0f;
+        float y = at.Y - size * 0.4f + bob;
+        Lens.Offer(p.Ptr, at.X - size * 1.5f, y - size * 3f, at.X + size * 1.5f, y + size);
+        Lens.Chevron(at.X, y, size, col);
+
+        float frac = down || p.HealthMax <= 0 ? 0f : Math.Clamp(p.Health / (float)p.HealthMax, 0f, 1f);
+        float mh = MathF.Max(3f, Lens.L(3.5f));
+        float mw = MathF.Max(size * 2.6f, Lens.L(30f));
+        float my = y - size * 1.1f - Lens.L(6f) - mh;
+        Lens.Meter(at.X - mw * 0.5f, my, mw, mh, frac, Lens.Trail(p.Ptr, frac), col, 5);
+
+        Lens.Tier tier = Lens.TierOf(p.Ptr, dist, LabelRange, MarkerFar);
+        if (tier == Lens.Tier.Card)
+            return true;
+        if (tier == Lens.Tier.Full)
+            Lens.Plate(at.X, my - Lens.L(3f), s.Label, GuardState(p, down), col, settle);
+        else if (tier == Lens.Tier.Name)
+            Lens.Caption(at.X, y + Lens.L(5f), Lens.Metres(away), Rgba.Mix(col, Theme.Hi, 0.4f));
+        return false;
     }
 
-    /// <summary>A downward chevron, its tip just above the head, with a dark rim so it reads against bright sky.</summary>
-    internal static void Chevron(float x, float tipY, float size, Rgba col)
+    private static readonly List<(string, Rgba)> _cardLines = new();
+
+    private static void FocusCard(Spawn s, RBMPawnAI p, Pawn me, Vector2 at)
     {
-        float w = size, h = size * 1.15f, rim = S(2f);
-        Shapes.Triangle(x - w - rim, tipY - h - rim * 0.6f, x + w + rim, tipY - h - rim * 0.6f, x, tipY + rim * 1.4f, MarkerEdge, 0.9f);
-        Shapes.Triangle(x - w, tipY - h, x + w, tipY - h, x, tipY, col, 1f);
+        bool down = Down(p);
+        Rgba col = GuardColour(p, down);
+        float r = Lens.L(14f);
+        Lens.Lock(at.X - r, at.Y - r * 2f, at.X + r, at.Y + r * 0.5f, Theme.Accent, Lens.FocusAge);
 
-        // The notch makes it a chevron rather than a plain triangle.
-        float notch = h * 0.45f;
-        Shapes.Triangle(x - w * 0.42f, tipY - h - S(0.5f), x + w * 0.42f, tipY - h - S(0.5f), x, tipY - h + notch, MarkerEdge, 0.9f);
-    }
+        _cardLines.Clear();
+        string where = Lens.Metres(Vector3.Distance(p.Location, me.Location)) + " AWAY";
+        if (p.HealthMax > 0)
+            where += "   " + Math.Max(0, p.Health) + " / " + p.HealthMax + " HP";
+        _cardLines.Add((where, Theme.Mid));
+        _cardLines.Add((GuardState(p, down), down ? Theme.Low : col));
 
-    private static void Health(RBMPawnAI p, float x, float y, float size, Rgba col, bool down)
-    {
-        float w = size * 2.2f, h = MathF.Max(2f, S(3f));
-        float part = down || p.HealthMax <= 0 ? 0f : Math.Clamp(p.Health / (float)p.HealthMax, 0f, 1f);
-        Rect(x - w * 0.5f - S(1), y - S(1), w + S(2), h + S(2), MarkerEdge, 0.85f);
-        Rect(x - w * 0.5f, y, w, h, Theme.White, 0.12f);
-        if (part > 0f)
-            Rect(x - w * 0.5f, y, w * part, h, col, 1f);
-    }
-
-    /// <summary>
-    /// For a bodyguard off screen or behind you: an arrow on an oval just inside the screen edge, pointing his way.
-    /// The direction comes from the camera's own right and up axes, so it's right even when he's behind the camera.
-    /// </summary>
-    internal static void EdgeArrow(Vector3 where, Rgba col)
-    {
-        Vector3 d = where - WorldView.Eye;
-        float rx = Vector3.Dot(d, WorldView.Right);
-        float uy = Vector3.Dot(d, WorldView.Up);
-        if (MathF.Abs(rx) < 0.001f && MathF.Abs(uy) < 0.001f)
-            return;
-
-        float a = MathF.Atan2(-uy, rx);
-        float cx = WorldView.Width * 0.5f, cy = WorldView.Height * 0.5f;
-        float ax = cx + MathF.Cos(a) * (cx - S(48)), ay = cy + MathF.Sin(a) * (cy - S(48));
-        float size = S(10);
-        float fx = MathF.Cos(a), fy = MathF.Sin(a);
-        float sx = -fy, sy = fx;
-        float rim = S(2f);
-        Shapes.Triangle(ax + fx * (size + rim), ay + fy * (size + rim), ax - fx * (size * 0.6f + rim) + sx * (size + rim), ay - fy * (size * 0.6f + rim) + sy * (size + rim),
-            ax - fx * (size * 0.6f + rim) - sx * (size + rim), ay - fy * (size * 0.6f + rim) - sy * (size + rim), MarkerEdge, 0.9f);
-        Shapes.Triangle(ax + fx * size, ay + fy * size, ax - fx * size * 0.6f + sx * size, ay - fy * size * 0.6f + sy * size,
-            ax - fx * size * 0.6f - sx * size, ay - fy * size * 0.6f - sy * size, col, 1f);
+        float frac = down || p.HealthMax <= 0 ? 0f : Math.Clamp(p.Health / (float)p.HealthMax, 0f, 1f);
+        Lens.Card(at.X, at.Y, at.X + r, at.Y - r * 2f, "BODYGUARD", s.Label, _cardLines, col, frac, Lens.Trail(p.Ptr, frac), Lens.FocusAge);
     }
 }

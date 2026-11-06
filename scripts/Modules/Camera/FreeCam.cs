@@ -47,13 +47,11 @@ internal sealed class FreeCam : Module
     /// <summary>Every key flying reads. Oracle hotkeys on these wait while flying.</summary>
     private static readonly int[] FlyKeys = { 'W', 'A', 'S', 'D', 'Q', 'E', 'Z', 'X', 'C', 'T', 'B', 'P', 'H', VkSpace, VkControl, VkShift, VkAlt };
 
-    private static readonly string[] Hint =
+    private static readonly (string, string)[] Hint =
     {
-        "WASD  FLY      SPACE / CTRL  UP / DOWN",
-        "SHIFT  FAST    ALT  SLOW     MOUSE  LOOK",
-        "Q / E  TILT    Z / X  ZOOM   C  STRAIGHTEN",
-        "T  TRIPOD HERE    B  PUT BATMAN HERE",
-        "P  FREEZE WORLD   H  HIDE THESE KEYS",
+        ("WASD", "FLY"), ("SPACE / CTRL", "UP / DOWN"), ("SHIFT", "FAST"), ("ALT", "SLOW"), ("MOUSE", "LOOK"),
+        ("Q / E", "TILT"), ("Z / X", "ZOOM"), ("C", "STRAIGHTEN"), ("T", "TRIPOD HERE"), ("B", "PUT BATMAN HERE"),
+        ("P", "FREEZE WORLD"), ("H", "HIDE THESE KEYS"),
     };
 
     private Toggle _fly = null!, _tripod = null!, _track = null!, _freeze = null!, _hud = null!;
@@ -657,18 +655,14 @@ internal sealed class FreeCam : Module
 
     // ---- the keys hint
 
+    /// <summary>The free camera's keys as chips, at the top of the left dock while it's flying.</summary>
     public override void Draw(Canvas c)
     {
-        const float scale = 0.72f;
-        float lh = Gfx.S(20);
-        float w = Hint.Max(l => Gfx.TextW(l, scale)) + Gfx.S(32);
-        float h = Gfx.S(22) + lh * (Hint.Length + 1);
-        float x = Gfx.S(24);
-        float y = Gfx.S(90);
-        Gfx.Panel(x, y, w, h, 0.75f, 2f);
-        float cy = y + Gfx.S(10) + lh * 0.5f;
-        Gfx.TextMid(x + Gfx.S(14), cy, _worldFrozen ? "FREE CAMERA - WORLD FROZEN" : "FREE CAMERA", Theme.Accent, 0.85f);
-        for (int i = 0; i < Hint.Length; i++)
-            Gfx.TextMid(x + Gfx.S(14), cy + lh * (i + 1), Hint[i], Theme.Mid, scale);
+        float w = Hud.U(Hud.CardW + 60f);
+        float inner = w - Hud.U(Hud.Pad) * 2f;
+        float h = Hud.Height(Hud.Keys(0f, 0f, inner, Hint, false));
+        var (x, y, age) = Hud.Place("freecam", Hud.Side.Left, -1, w, h);
+        float top = Hud.Card(x, y, w, h, "FREE CAMERA", _worldFrozen ? "WORLD FROZEN" : "", Theme.Signal, age);
+        Hud.Keys(x + Hud.U(Hud.Pad), top, inner, Hint);
     }
 }
