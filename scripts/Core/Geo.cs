@@ -15,6 +15,17 @@ internal static class Geo
         return dx * dx + dy * dy;
     }
 
+    /// <summary>An angle brought into -180..180 degrees.</summary>
+    public static float WrapDegrees(float degrees)
+    {
+        degrees %= 360f;
+        if (degrees > 180f)
+            degrees -= 360f;
+        else if (degrees < -180f)
+            degrees += 360f;
+        return degrees;
+    }
+
     /// <summary>The flat unit direction a yaw faces.</summary>
     public static Vector3 Facing(float yawDegrees)
     {

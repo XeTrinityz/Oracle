@@ -16,7 +16,8 @@ internal static class Districts
     private const double RefreshSeconds = 2.0;
 
     private static readonly Dictionary<string, Cell> _all = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly List<RLevelVolumeOW> _volumes = new();
+    private static readonly Dictionary<string, FName> _names = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly List<(RLevelVolumeOW Volume, string Name)> _volumes = new();
     private static Every _refresh;
 
     /// <summary>Every city district by name, with the bounds of its volume.</summary>
@@ -34,22 +35,34 @@ internal static class Districts
     {
         Refresh();
         RLevelVolumeOW? best = null;
-        foreach (RLevelVolumeOW v in _volumes)
+        string? name = null;
+        foreach ((RLevelVolumeOW v, string n) in _volumes)
         {
             if (v is { IsValid: true } && v.EncompassesPoint(point) && (best == null || v.Priority > best.Priority))
+            {
                 best = v;
+                name = n;
+            }
         }
 
-        return best?.Level.ToString();
+        return name;
+    }
+
+    /// <summary>A district's name as the game's FName, made once per district rather than per use.</summary>
+    public static FName NameOf(string level)
+    {
+        if (!_names.TryGetValue(level, out FName name))
+            _names[level] = name = new FName(level);
+        return name;
     }
 
     /// <summary>The volume of a named district, if the game has one loaded.</summary>
     public static RLevelVolumeOW? Volume(string level)
     {
         Refresh();
-        foreach (RLevelVolumeOW v in _volumes)
+        foreach ((RLevelVolumeOW v, string name) in _volumes)
         {
-            if (v is { IsValid: true } && v.Level.ToString().Equals(level, StringComparison.OrdinalIgnoreCase))
+            if (v is { IsValid: true } && name.Equals(level, StringComparison.OrdinalIgnoreCase))
                 return v;
         }
 
@@ -78,7 +91,7 @@ internal static class Districts
                 if (name.Length == 0 || name == "None" || !name.StartsWith("City", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                _volumes.Add(v);
+                _volumes.Add((v, name));
                 if (_all.ContainsKey(name))
                     continue;
 

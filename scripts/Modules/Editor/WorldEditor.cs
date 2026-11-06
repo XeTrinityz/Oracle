@@ -96,7 +96,19 @@ internal sealed partial class WorldEditor : Module
     /// <summary>The menu is on WORLD/EDITOR, so the aim bracket and centre dot show what SELECT AIMED would take.</summary>
     public bool Picking => _modeOn ? !Menu.IsOpen && !Radial.IsLive : Menu.IsOpen && !Menu.Searching && Menu.Current.Title == PageTitle;
 
-    private bool AnyShown => _show.Any(t => t.On);
+    private bool AnyShown
+    {
+        get
+        {
+            foreach (Toggle t in _show)
+            {
+                if (t.On)
+                    return true;
+            }
+
+            return false;
+        }
+    }
 
     public override bool HasHud => World.InGame && (AnyShown || Selected != null || _grab.On || Picking || _modeOn);
 
@@ -258,7 +270,7 @@ internal sealed partial class WorldEditor : Module
         // Cutscenes spawn and tear down actors fastest, which is where a half-destroyed one crashed a scan, and
         // nothing in the list can be used during one anyway.
         bool cinematic = Safe.Try("editor cinematic check", () => World.Pc is { } pc && CameraRig.InCinematic(pc), fallback: true);
-        if (!cinematic && (AnyShown || _selected != null || _grab.On || _modeOn || Menu.IsOpen || Edits.Count > 0) && _scan.Elapsed(ScanSeconds))
+        if (!cinematic && (AnyShown || _selected != null || _grab.On || _modeOn || Menu.IsOpen || Edits.HasChanges) && _scan.Elapsed(ScanSeconds))
         {
             Scan();
             if (Menu.IsOpen)

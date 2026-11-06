@@ -220,7 +220,7 @@ internal sealed partial class Batmobile
     private void SelfRight(RVehicleBatmobileBase car, float dt)
     {
         Rotator r = car.Rotation;
-        bool tipped = MathF.Abs(Wrap(r.Roll)) > TippedDegrees || MathF.Abs(Wrap(r.Pitch)) > TippedDegrees;
+        bool tipped = MathF.Abs(Geo.WrapDegrees(r.Roll)) > TippedDegrees || MathF.Abs(Geo.WrapDegrees(r.Pitch)) > TippedDegrees;
         bool stuck = tipped && car.Velocity.Length() < TippedSpeed && car.GetNumWheelsOnGround() < 2;
         _tippedFor = stuck ? _tippedFor + dt : 0f;
         if (_tippedFor < RightAfter || Clock.Now - _rightedAt < RightGap || car.Mesh is not { IsValid: true } mesh)
@@ -231,17 +231,7 @@ internal sealed partial class Batmobile
         mesh.SetRBRotation(new Rotator(0f, r.Yaw, 0f), FName.None);
         mesh.SetRBPosition(car.Location + new Vector3(0f, 0f, RightLift), FName.None);
         mesh.SetRBAngularVelocity(Vector3.Zero, false);
-        Log.Info("AUTO-RIGHT: the Batmobile was tipped over (roll " + Wrap(r.Roll).ToString("0", CultureInfo.InvariantCulture) + ", pitch " +
-            Wrap(r.Pitch).ToString("0", CultureInfo.InvariantCulture) + "), put back on its wheels.");
-    }
-
-    private static float Wrap(float degrees)
-    {
-        degrees %= 360f;
-        if (degrees > 180f)
-            degrees -= 360f;
-        else if (degrees < -180f)
-            degrees += 360f;
-        return degrees;
+        Log.Info("AUTO-RIGHT: the Batmobile was tipped over (roll " + Geo.WrapDegrees(r.Roll).ToString("0", CultureInfo.InvariantCulture) + ", pitch " +
+            Geo.WrapDegrees(r.Pitch).ToString("0", CultureInfo.InvariantCulture) + "), put back on its wheels.");
     }
 }

@@ -73,7 +73,8 @@ internal sealed class Npcs : Module
     private const float MeleeStandoff = 140f;
     private const float GunStandoff = 700f;
     private const double AllegianceSeconds = 0.25;
-    private const string Reason = "Oracle";
+    private static readonly FName Reason = new("Oracle");
+    private static readonly FName HackTimeout = new("BatmobileHackTimeout");
     private readonly HashSet<nint> _pacified = new();
     private readonly Dictionary<nint, Loyal> _team = new();
     private Every _allegiance;
@@ -692,7 +693,7 @@ internal sealed class Npcs : Module
     /// <summary>Undoes a half-finished switch: no hack timer, out of the friendly list, and its own AI running again.</summary>
     private static void RestoreTank(RVehicleTank tank, RVehicleBehaviour? behaviour, Class? behaviourClass)
     {
-        tank.ClearTimer(new FName("BatmobileHackTimeout"), null!);
+        tank.ClearTimer(HackTimeout, null!);
         if (tank.DroneHacked)
             tank.DroneHacked = false;
         if (World.Info?.VehicleCombatManager is { IsValid: true } vcm)
@@ -723,7 +724,7 @@ internal sealed class Npcs : Module
 
             if (tank.IsFriendly)
             {
-                tank.ClearTimer(new FName("BatmobileHackTimeout"), null!);
+                tank.ClearTimer(HackTimeout, null!);
                 tank.BatmobileHackTimeout();
                 count++;
             }
@@ -881,7 +882,7 @@ internal sealed class Npcs : Module
             if (p is not RPawnVillain v || !v.IsValid || v.bDeleteMe || !Alive(v) || _team.ContainsKey(v.Ptr) || !v.IsHostile())
                 continue;
 
-            v.SetHostile(false, new FName(Reason));
+            v.SetHostile(false, Reason);
             _pacified.Add(v.Ptr);
         }
     }
@@ -894,7 +895,7 @@ internal sealed class Npcs : Module
         foreach (RPawnVillain v in World.All<RPawnVillain>())
         {
             if (_pacified.Contains(v.Ptr) && !v.bDeleteMe && !v.IsHostile())
-                v.SetHostile(true, new FName("None"));
+                v.SetHostile(true, FName.None);
         }
 
         _pacified.Clear();
@@ -920,7 +921,7 @@ internal sealed class Npcs : Module
             throw new InvalidOperationException("they're down");
 
         if (_pacified.Remove(v.Ptr) && !v.IsHostile())
-            v.SetHostile(true, new FName("None"));
+            v.SetHostile(true, FName.None);
         _team[v.Ptr] = new Loyal { Team = WithYou };
         _allegiance.Force();
 
@@ -962,7 +963,7 @@ internal sealed class Npcs : Module
             if (l.Marked && v.CannotBeTargettedByPlayer is { IsValid: true })
                 v.CannotBeTargettedByPlayer = null!;
             if (!v.IsHostile())
-                v.SetHostile(true, new FName("None"));
+                v.SetHostile(true, FName.None);
         }
 
         foreach (nint gone in _team.Where(kv => which(kv.Value.Team)).Select(kv => kv.Key).ToArray())
@@ -1020,7 +1021,16 @@ internal sealed class Npcs : Module
     {
         RPawnVillain? target = null;
         if (l.Target != 0)
-            target = near.OfType<RPawnVillain>().FirstOrDefault(q => q.Ptr == l.Target && q.IsValid && CanFight(l.Team, q));
+        {
+            foreach (Pawn q in near)
+            {
+                if (q.Ptr == l.Target && q is RPawnVillain { IsValid: true } same && CanFight(l.Team, same))
+                {
+                    target = same;
+                    break;
+                }
+            }
+        }
 
         // Sticky: keeps its man until he is down, so it isn't pulled across the fight every time someone else is closer.
         if (target == null)
@@ -1028,11 +1038,20 @@ internal sealed class Npcs : Module
             if (!choose && l.Target == 0)
                 return;
 
-            target = near
-                .OfType<RPawnVillain>()
-                .Where(q => q.Ptr != v.Ptr && q.IsValid && CanFight(l.Team, q))
-                .OrderBy(q => Vector3.DistanceSquared(q.Location, v.Location))
-                .FirstOrDefault();
+            float best = float.MaxValue;
+            foreach (Pawn q in near)
+            {
+                if (q.Ptr == v.Ptr || q is not RPawnVillain { IsValid: true } other || !CanFight(l.Team, other))
+                    continue;
+
+                float d = Vector3.DistanceSquared(other.Location, v.Location);
+                if (d < best)
+                {
+                    best = d;
+                    target = other;
+                }
+            }
+
             l.Target = target?.Ptr ?? 0;
         }
 
@@ -1044,7 +1063,7 @@ internal sealed class Npcs : Module
             StopShooting(v, l);
             if (!l.Benched && v.IsHostile())
             {
-                v.SetHostile(false, new FName(Reason));
+                v.SetHostile(false, Reason);
                 l.Benched = true;
             }
 
@@ -1053,7 +1072,7 @@ internal sealed class Npcs : Module
 
         if (l.Benched || !v.IsHostile())
         {
-            v.SetHostile(true, new FName("None"));
+            v.SetHostile(true, FName.None);
             l.Benched = false;
         }
 
@@ -1180,7 +1199,7 @@ internal sealed class Npcs : Module
         }
 
         Vector3 chest = target.Location + new Vector3(0f, 0f, ChestHeight);
-        v.AimAt(chest, new FName("None"), RAnimUtil_PosePlayer.EAllowTurningToAim.ALLOWTURNINGTOAIM_Yes, 1f, default);
+        v.AimAt(chest, FName.None, RAnimUtil_PosePlayer.EAllowTurningToAim.ALLOWTURNINGTOAIM_Yes, 1f, default);
         if (v.TrackTarget?.Ptr != target.Ptr)
             v.SetTrackTarget(target);
         if (v.DamageTarget?.Ptr != target.Ptr)

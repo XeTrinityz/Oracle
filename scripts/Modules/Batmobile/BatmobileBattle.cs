@@ -17,8 +17,11 @@ namespace CeZeY.Oracle;
 /// </summary>
 internal sealed partial class Batmobile
 {
-    private const string BattleState = "BattleMode";
-    private const string PursuitState = "PursuitMode";
+    // State names as the game's FNames, made once: a name lookup per tick is a hash of the string in the name table.
+    private static readonly FName BattleState = new("BattleMode");
+    private static readonly FName PursuitState = new("PursuitMode");
+    private static readonly FName WinchLockedOn = new("WinchLockedOn");
+    private static readonly FName WinchHoming = new("Homing");
 
     // How long the game gets to switch on its own before Oracle does it.
     private const double BattleGrace = 0.2;
@@ -53,7 +56,8 @@ internal sealed partial class Batmobile
             on => { if (!on) LeaveForcedBattle("switched off"); }).EveryTick(BattleTick);
     }
 
-    private static bool InState(Actor a, string state) => string.Equals(a.GetStateName().ToString(), state, StringComparison.OrdinalIgnoreCase);
+    /// <summary>State names carry no instance number, so the name index alone says whether they match.</summary>
+    private static bool InState(Actor a, FName state) => a.GetStateName().Index == state.Index;
 
     private void BattleTick()
     {
@@ -137,7 +141,7 @@ internal sealed partial class Batmobile
 
             _battleForcedAt = Clock.Now;
             _battleForcedCar = car.Ptr;
-            car.GotoState(new FName(BattleState), FName.None, false, false);
+            car.GotoState(BattleState, FName.None, false, false);
             bool strafe = KeepSafeDriveMode(car);
             Log.Info("Battle mode on any skin: entered battle mode on " + _battleWhy + " (now " + car.GetStateName() + ", " + (strafe ? "battle driving" : "normal driving: the wheels have no wheel controls") + ").");
         }
@@ -166,7 +170,7 @@ internal sealed partial class Batmobile
 
     /// <summary>The winch is flying or holding on: the states IsReadyToTransform refuses a mode switch in.</summary>
     private static bool WinchBusy(RVehicleBatmobileBase car) =>
-        car.BatmobileWinch is { IsValid: true } winch && (InState(winch, "WinchLockedOn") || InState(winch, "Homing"));
+        car.BatmobileWinch is { IsValid: true } winch && (InState(winch, WinchLockedOn) || InState(winch, WinchHoming));
 
     private static bool CanForceBattle(RVehicleBatmobileBase car, out string why)
     {
@@ -201,7 +205,7 @@ internal sealed partial class Batmobile
         {
             if (!InState(car, BattleState))
                 return;
-            car.GotoState(new FName(PursuitState), FName.None, false, false);
+            car.GotoState(PursuitState, FName.None, false, false);
             Log.Info("Battle mode on any skin: the player got out, so the car left battle mode (now " + car.GetStateName() + ").");
         });
     }
@@ -223,8 +227,8 @@ internal sealed partial class Batmobile
                 return;
 
             // Let the game leave when it can (its own exit plays the transform back); otherwise switch the state.
-            if (!car.TryToChangeMode(new FName(PursuitState)))
-                car.GotoState(new FName(PursuitState), FName.None, false, false);
+            if (!car.TryToChangeMode(PursuitState))
+                car.GotoState(PursuitState, FName.None, false, false);
             Log.Info("Battle mode on any skin: left battle mode (" + reason + ", now " + car.GetStateName() + ").");
         });
     }

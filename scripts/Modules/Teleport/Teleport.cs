@@ -26,6 +26,8 @@ internal sealed class Teleport : Module
     private readonly record struct Floor(Vector3 At, string? Level);
 
     private const string Caption = "ORACLE // RELOCATING";
+    private static readonly FName StandingPose = new("Standing");
+    private static readonly FName RelaxedPose = new("Relaxed");
     private const string ToastTitle = "TELEPORT";
     private const string HeldKey = "teleport.held";
     private const float QuickFadeOut = 0.35f;
@@ -63,6 +65,7 @@ internal sealed class Teleport : Module
     private const float DescendSpeed = 100f;
     private const float SlowSpeed = 40f;
     private const float LookAhead = 12000f;
+    private const double LookAheadSeconds = 0.25;
     private const float BoundaryWait = 30f;
     private const float CaptionEvery = 0.5f;
     private const float ArriveXY = 100f;
@@ -111,6 +114,8 @@ internal sealed class Teleport : Module
     private float _cruiseZ;
     private string? _cell;
     private string? _waitCell;
+    private Every _lookAhead;
+    private bool _slowForAhead;
     private float _waitFor;
     private float _caption;
     private Vector3 _descendTo;
@@ -477,6 +482,8 @@ internal sealed class Teleport : Module
         _cruiseZ = Math.Max(_origin.Z, _target.Z) + CruiseAbove;
         _cell = Districts.At(_origin);
         _waitCell = null;
+        _slowForAhead = false;
+        _lookAhead.Force();
         _waitFor = 0f;
         _caption = 0f;
         var travelled = new Vector3(_target.X - _origin.X, _target.Y - _origin.Y, 0f);
@@ -559,8 +566,14 @@ internal sealed class Teleport : Module
         }
         else
         {
-            string? ahead = Districts.At(_pos + _dir * LookAhead);
-            if (ahead != null && !ahead.Equals(_cell, StringComparison.OrdinalIgnoreCase) && World.Ri is { } ri && !Loaded(ri, ahead))
+            // The district ahead only sets the pace, so it's looked up a few times a second, not every tick.
+            if (_lookAhead.Elapsed(LookAheadSeconds))
+            {
+                string? ahead = Districts.At(_pos + _dir * LookAhead);
+                _slowForAhead = ahead != null && !ahead.Equals(_cell, StringComparison.OrdinalIgnoreCase) && World.Ri is { } ri && !Loaded(ri, ahead);
+            }
+
+            if (_slowForAhead)
                 step = Math.Min(step, SlowSpeed * UnitsPerMetre * dt);
         }
 
@@ -583,7 +596,7 @@ internal sealed class Teleport : Module
 
     private static bool Loaded(RGameRI ri, string cell)
     {
-        var name = new FName(cell);
+        FName name = Districts.NameOf(cell);
         return ri.IsLevelLoaded(name, true) || ri.IsLevelVisible(name, true);
     }
 
@@ -683,7 +696,7 @@ internal sealed class Teleport : Module
         }
         else
         {
-            ri.SetCurrentLevel(new FName(level), ri, false);
+            ri.SetCurrentLevel(Districts.NameOf(level), ri, false);
         }
     }
 
@@ -770,7 +783,7 @@ internal sealed class Teleport : Module
     public static void Settle(Pawn mover, bool moved = true)
     {
         if (mover is RPawnPlayer batman)
-            Safe.Run("player pose", () => batman.ForceChangePose(new FName("Standing"), new FName("Relaxed"), default, false, default, default, default, 0.001f));
+            Safe.Run("player pose", () => batman.ForceChangePose(StandingPose, RelaxedPose, default, false, default, default, default, 0.001f));
         if (moved)
             Safe.Run("player moved", () => World.Pc?.OnPlayerHasBeenMoved());
     }

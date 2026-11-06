@@ -48,6 +48,21 @@ internal static class Edits
 
     public static int Count => _edits.Values.Count(e => e.Changed);
 
+    /// <summary>True while any object has been changed, for the editor's per-tick checks.</summary>
+    public static bool HasChanges
+    {
+        get
+        {
+            foreach (Edit e in _edits.Values)
+            {
+                if (e.Changed)
+                    return true;
+            }
+
+            return false;
+        }
+    }
+
     public static IReadOnlyCollection<nint> Pointers => _edits.Keys;
 
     public static Edit? Find(Thing t) => _edits.TryGetValue(t.Ptr, out Edit? e) && e.Thing == t ? e : null;

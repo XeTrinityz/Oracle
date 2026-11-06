@@ -561,11 +561,12 @@ internal static class Pad
     private static int ParkNamed(PlayerInput input, string name, bool park)
     {
         int changed = 0;
+        int wanted = NameIndex(name);
         Span<Input.FKeyBind> binds = input.Bindings.AsSpan();
         for (int i = 0; i < binds.Length; i++)
         {
             ref Input.FKeyBind b = ref binds[i];
-            if ((b.Control && b.Shift && b.Alt) == park || !string.Equals(b.Name.ToString(), name, StringComparison.OrdinalIgnoreCase))
+            if ((b.Control && b.Shift && b.Alt) == park || b.Name.Index != wanted || b.Name.Number != 0)
                 continue;
 
             b.Control = park;
@@ -630,6 +631,27 @@ internal static class Pad
     private static bool IsPadBind(string name) =>
         (name.StartsWith("XboxTypeS_", StringComparison.OrdinalIgnoreCase) || name.StartsWith("Gamepad_", StringComparison.OrdinalIgnoreCase)) &&
         !name.Equals("XboxTypeS_Start", StringComparison.OrdinalIgnoreCase);
+
+    // Whether a binding's key is a controller button, by the key's name index: the name table never changes, and
+    // the binding list is read every few frames, so the text is read once per key instead of once per binding per pass.
+    private static readonly Dictionary<int, bool> _padBindByName = new();
+    private static readonly Dictionary<string, int> _nameIndex = new(StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsPadBind(FName name)
+    {
+        if (name.Number != 0)
+            return IsPadBind(name.ToString() ?? "");
+        if (!_padBindByName.TryGetValue(name.Index, out bool pad))
+            _padBindByName[name.Index] = pad = IsPadBind(name.ToString() ?? "");
+        return pad;
+    }
+
+    private static int NameIndex(string name)
+    {
+        if (!_nameIndex.TryGetValue(name, out int index))
+            _nameIndex[name] = index = new FName(name).Index;
+        return index;
+    }
 
     private static PlayerInput? CurrentInput()
     {
@@ -720,16 +742,16 @@ internal static class Pad
     private static int Park(PlayerInput input, bool park)
     {
         int changed = 0;
+        int owned = _parkedOwned != null ? NameIndex(_parkedOwned) : -1;
         Span<Input.FKeyBind> binds = input.Bindings.AsSpan();
         for (int i = 0; i < binds.Length; i++)
         {
             ref Input.FKeyBind b = ref binds[i];
-            string name = b.Name.ToString() ?? "";
-            if ((b.Control && b.Shift && b.Alt) == park || !IsPadBind(name))
+            if ((b.Control && b.Shift && b.Alt) == park || !IsPadBind(b.Name))
                 continue;
 
             // The radial button stays parked while the radial owns it.
-            if (!park && _parkedOwned != null && name.Equals(_parkedOwned, StringComparison.OrdinalIgnoreCase))
+            if (!park && b.Name.Index == owned && b.Name.Number == 0)
                 continue;
 
             b.Control = park;

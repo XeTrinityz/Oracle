@@ -184,8 +184,9 @@ internal sealed class Movement : Module
                 return;
             }
 
+            Func<float, float> scaled = v => v * scale;
             foreach (Held<T, float> f in _fields)
-                f.Set(obj, v => v * scale);
+                f.Set(obj, scaled);
         }
 
         public void Restore()

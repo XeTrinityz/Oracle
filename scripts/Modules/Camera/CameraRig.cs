@@ -547,8 +547,30 @@ internal sealed partial class CameraRig : Module
         _carViewTries = 0;
     }
 
-    private static bool Driving(R3rdPersonCamera cam) =>
-        Safe.Try("driving camera", () => cam.IsChildState(cam.GetStateName(), DrivingState));
+    // Whether the camera's state is a driving one, remembered per state: the answer only changes with the state,
+    // and asking the game (IsChildState) every tick is a script call.
+    private int _drivingState = -1;
+    private bool _driving;
+
+    private bool Driving(R3rdPersonCamera cam)
+    {
+        FName state = cam.GetStateName();
+        if (state.Index == _drivingState)
+            return _driving;
+
+        try
+        {
+            _driving = cam.IsChildState(state, DrivingState);
+            _drivingState = state.Index;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("driving camera", "driving camera", ex);
+            return false;
+        }
+
+        return _driving;
+    }
 
     /// <summary>
     /// Steps the driving camera to the chosen one with the game's own toggle, once per drive, so the game's key

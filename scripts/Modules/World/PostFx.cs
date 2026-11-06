@@ -25,6 +25,8 @@ internal sealed class PostFx : Module
         Exposure, BloomOn, Bloom, BlurOn, Blur, Grain, DofOn, Focus, Aperture, D1Start, D1End, D2Start, D2End, H1Pos, H2Pos, Count,
     }
 
+    private static readonly F[] FogDistances = { F.D1Start, F.D1End, F.D2Start, F.D2End };
+
     private Slider _exposure = null!;
     private Slider _bloom = null!;
     private Slider _blur = null!;
@@ -149,7 +151,7 @@ internal sealed class PostFx : Module
             n[(int)F.Aperture] = (o[(int)F.Aperture] > 0.001 ? o[(int)F.Aperture] : DefaultAperture) / _dofBlur.Value;
 
         float d = _fogDistance.Value;
-        foreach (F f in new[] { F.D1Start, F.D1End, F.D2Start, F.D2End })
+        foreach (F f in FogDistances)
             n[(int)f] = o[(int)f] * d;
 
         double lift = _fogHeight.Value * 100.0;

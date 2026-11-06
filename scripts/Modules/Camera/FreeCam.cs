@@ -264,8 +264,8 @@ internal sealed class FreeCam : Module
         Rotator r = pov.Rotation;
         _pos = pov.Location;
         _yaw = _viewYaw = r.Yaw;
-        _pitch = _viewPitch = Math.Clamp(Wrap(r.Pitch), -PitchLimit, PitchLimit);
-        _roll = Wrap(r.Roll);
+        _pitch = _viewPitch = Math.Clamp(Geo.WrapDegrees(r.Pitch), -PitchLimit, PitchLimit);
+        _roll = Geo.WrapDegrees(r.Roll);
         _fov = _startFov = pov.FOV > 1f ? pov.FOV : 70f;
     }
 
@@ -534,8 +534,8 @@ internal sealed class FreeCam : Module
         // The game's camera turned this much from the mouse or stick; the free camera turns the same.
         if (_haveLast && listening)
         {
-            _yaw += Wrap(game.Yaw - _lastYaw) * _look.Value;
-            _pitch = Math.Clamp(_pitch + Wrap(game.Pitch - _lastPitch) * _look.Value, -PitchLimit, PitchLimit);
+            _yaw += Geo.WrapDegrees(game.Yaw - _lastYaw) * _look.Value;
+            _pitch = Math.Clamp(_pitch + Geo.WrapDegrees(game.Pitch - _lastPitch) * _look.Value, -PitchLimit, PitchLimit);
         }
 
         _lastYaw = game.Yaw;
@@ -556,8 +556,8 @@ internal sealed class FreeCam : Module
             if (Down(VkControl)) move -= Vector3.UnitZ;
             boost = Down(VkShift) ? 4f : Down(VkAlt) ? 0.25f : 1f;
 
-            if (Down('Q')) _roll = Wrap(_roll - RollSpeed * dt);
-            if (Down('E')) _roll = Wrap(_roll + RollSpeed * dt);
+            if (Down('Q')) _roll = Geo.WrapDegrees(_roll - RollSpeed * dt);
+            if (Down('E')) _roll = Geo.WrapDegrees(_roll + RollSpeed * dt);
             if (Down('Z')) _fov = Math.Clamp(_fov * MathF.Exp(-ZoomSpeed * dt), MinFov, MaxFov);
             if (Down('X')) _fov = Math.Clamp(_fov * MathF.Exp(ZoomSpeed * dt), MinFov, MaxFov);
         }
@@ -602,7 +602,7 @@ internal sealed class FreeCam : Module
             float flat = MathF.Sqrt(d.X * d.X + d.Y * d.Y);
             if (flat > 1f || MathF.Abs(d.Z) > 1f)
             {
-                _yaw = _viewYaw + Wrap(MathF.Atan2(d.Y, d.X) * Deg - _viewYaw);
+                _yaw = _viewYaw + Geo.WrapDegrees(MathF.Atan2(d.Y, d.X) * Deg - _viewYaw);
                 _pitch = Math.Clamp(MathF.Atan2(d.Z, flat) * Deg, -PitchLimit, PitchLimit);
             }
         }
@@ -614,7 +614,7 @@ internal sealed class FreeCam : Module
     private void Turn(float dt, float rate)
     {
         float k = rate >= 29f ? 1f : Ease.Follow(rate, dt);
-        _viewYaw += Wrap(_yaw - _viewYaw) * k;
+        _viewYaw += Geo.WrapDegrees(_yaw - _viewYaw) * k;
         _viewPitch += (_pitch - _viewPitch) * k;
     }
 
@@ -631,16 +631,6 @@ internal sealed class FreeCam : Module
     }
 
     // ---- maths
-
-    private static float Wrap(float deg)
-    {
-        deg %= 360f;
-        if (deg > 180f)
-            deg -= 360f;
-        else if (deg < -180f)
-            deg += 360f;
-        return deg;
-    }
 
     private static Vector3 Forward(float yaw, float pitch)
     {
@@ -660,7 +650,7 @@ internal sealed class FreeCam : Module
         return new Pov
         {
             Location = Vector3.Lerp(a.Location, b.Location, t),
-            Rotation = new Rotator(ra.Pitch + Wrap(rb.Pitch - ra.Pitch) * t, ra.Yaw + Wrap(rb.Yaw - ra.Yaw) * t, ra.Roll + Wrap(rb.Roll - ra.Roll) * t),
+            Rotation = new Rotator(ra.Pitch + Geo.WrapDegrees(rb.Pitch - ra.Pitch) * t, ra.Yaw + Geo.WrapDegrees(rb.Yaw - ra.Yaw) * t, ra.Roll + Geo.WrapDegrees(rb.Roll - ra.Roll) * t),
             FOV = a.FOV + (b.FOV - a.FOV) * t,
         };
     }
