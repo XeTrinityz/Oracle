@@ -12,12 +12,11 @@ namespace CeZeY.Oracle;
 internal static unsafe class GameKeys
 {
     /// <summary>
-    /// Bytes per binding to try, smallest first. Each starts with the FName (8) and the command FString (16). In
-    /// game it measured 28 (packed, matching BmSDK's FKeyBind), but the size is still confirmed at run time rather
-    /// than trusted: the first size at which every entry reads as a binding and enough names are key names.
-    /// Smallest first keeps every read inside the array.
+    /// Bytes per binding: BmSDK's FKeyBind size (28; the fork sizes structs by their array stride). Each entry starts
+    /// with the FName (8) and the command FString (16). The array is still checked at that size before anything is
+    /// written: every entry must read as a binding and enough names must be key names.
     /// </summary>
-    private static readonly int[] Strides = { 28, 32, 36, 40, 44, 48, 52, 56, 64, 72, 80 };
+    private static readonly int BindStride = System.Runtime.InteropServices.Marshal.SizeOf<BmSDK.Engine.Input.FKeyBind>();
 
     private const int MaxBindings = 4096;
     private const int MaxCommand = 4096;
@@ -306,17 +305,10 @@ internal static unsafe class GameKeys
 
         if (_stride == 0)
         {
-            foreach (int s in Strides)
-            {
-                if (Valid(items, n, s) && KeyHits(items, n, s) >= MinKeyHits)
-                {
-                    _stride = s;
-                    break;
-                }
-            }
-
-            if (_stride == 0)
-                return Fail(n + " entries, no entry size fits");
+            if (Valid(items, n, BindStride) && KeyHits(items, n, BindStride) >= MinKeyHits)
+                _stride = BindStride;
+            else
+                return Fail(n + " entries, not key bindings at " + BindStride + " bytes");
         }
         else if (!Valid(items, n, _stride))
             return Fail("entries changed shape at " + _stride + " bytes");

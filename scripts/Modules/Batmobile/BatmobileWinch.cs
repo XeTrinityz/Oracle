@@ -57,8 +57,8 @@ internal sealed unsafe partial class Batmobile
 
     /// <summary>
     /// The root bone, and the point ahead of the front wheels in that bone's own space. Everything is read from memory
-    /// (LocalToWorld, SpaceBases): natives that return an FQuat or FMatrix write it with aligned SSE stores into
-    /// BmSDK's unaligned return buffer, and GetBoneQuaternion crashed the game that way (2026-11-05).
+    /// (LocalToWorld, SpaceBases) rather than through GetBoneQuaternion and friends: one read per bone, no call into
+    /// the game. (Those calls crashed stock BmSDK; the fork fixed that, so this is now only about speed.)
     /// </summary>
     private static bool WinchPoint(RVehicleBatmobileBase car, SkeletalMeshComponent comp, out FName bone, out Vector3 local, out string how)
     {

@@ -244,10 +244,9 @@ internal static class Things
             }
         }
 
-        // Never call Actor.GetComponentsBoundingBox: its out FBox overran BmSDK's buffer and crashed the game in
-        // coreclr (2026-11-05). This is the same sum done here from properties the engine keeps up to date: the
-        // bounds of every attached component that collides (UE3's AActor::GetComponentsBoundingBox). Only when none
-        // does is the main component's bounds used on its own.
+        // The box is summed here from the components' own bounds rather than taken from Actor.GetComponentsBoundingBox,
+        // because the editor wants a different answer from the engine's (see below: what you can see wins, and only
+        // touching parts count). The engine's box is the fallback when no part can be read.
         // A vehicle's component list couldn't be read in game (2026-11-05: every RVehicleCar threw), and its skeletal
         // mesh covers the whole vehicle anyway, so vehicles skip straight to the mesh below.
         // What you can see wins over what collides: an interaction trigger can be far bigger than the thing it belongs
@@ -258,6 +257,7 @@ internal static class Things
         float limit = t.Kind == ThingKind.Vehicle ? MaxVehicleBox : MaxBox;
         _meshParts.Clear();
         _colParts.Clear();
+        bool partsReadable = false;
         if (a is not Vehicle)
         {
             try
@@ -269,6 +269,8 @@ internal static class Things
                     else if (c is PrimitiveComponent { IsValid: true, bAttached: true, CollideActors: true } prim)
                         Collect(prim, at, limit, _colParts);
                 }
+
+                partsReadable = true;
             }
             catch (Exception)
             {
@@ -306,20 +308,41 @@ internal static class Things
                 Collect(main, at, limit, parts);
         }
 
-        if (Cluster(parts, at, out Vector3 min, out Vector3 max))
+        if (Cluster(parts, at, out Vector3 min, out Vector3 max) && Sane(max - min, limit))
         {
-            Vector3 size = max - min;
-            if (size.X > 1f && size.Y > 1f && size.Z > 1f && size.X < limit && size.Y < limit && size.Z < limit)
+            t.Min = min - at;
+            t.Max = max - at;
+            return;
+        }
+
+        // The engine's own box (every attached colliding component) when nothing above gave one. Only for an actor
+        // whose component list was readable: one being torn down may hold freed components, and this is a native
+        // call into them. Needs the BmSDK fork (the call's aligned buffer); it crashed stock BmSDK.
+        if (parts.Count == 0 && partsReadable)
+        {
+            try
             {
-                t.Min = min - at;
-                t.Max = max - at;
-                return;
+                a.GetComponentsBoundingBox(out GameObject.FBox box);
+                if (box.IsValid != 0 && Sane(box.Max - box.Min, limit))
+                {
+                    t.Min = box.Min - at;
+                    t.Max = box.Max - at;
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // The default box below.
             }
         }
 
         t.Min = new Vector3(-DefaultHalf);
         t.Max = new Vector3(DefaultHalf);
     }
+
+    /// <summary>A box bigger than a point and smaller than the limit on every side.</summary>
+    private static bool Sane(Vector3 size, float limit) =>
+        size.X > 1f && size.Y > 1f && size.Z > 1f && size.X < limit && size.Y < limit && size.Z < limit;
 
     private readonly record struct Part(Vector3 Min, Vector3 Max);
 
