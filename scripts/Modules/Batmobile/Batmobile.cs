@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Numerics;
+using BmSDK;
 using BmSDK.BmGame;
 using BmSDK.Engine;
 using static CeZeY.Oracle.Catalog;
@@ -42,7 +43,14 @@ internal sealed partial class Batmobile : Module
     private Toggle _stats = null!;
     private Choice _units = null!;
 
+    // VEHICLE RADAR ON FOOT. RPlayerController.PreRender (the on-foot HUD; driving runs DrivingMode.PreRender) only
+    // runs the full radar when `BatmobilePawn != none && bAlwaysShowVehicleRadar`, and Possess sets BatmobilePawn to
+    // the possessed pawn, so on foot it is always none and the flag alone does nothing. The radar block sits between
+    // UpdatePlayerWaypoint and CurrentForensicsDevice.PreRender (each called only from there), so the parked car is lent
+    // to BatmobilePawn after the first and taken back before the second: nothing else in that frame sees it.
     private readonly Held<RPlayerController, bool> _radar = new("vehicle radar", pc => pc.bAlwaysShowVehicleRadar, (pc, v) => pc.bAlwaysShowVehicleRadar = v);
+    private Toggle _radarOnFoot = null!;
+    private RPlayerController? _radarLentTo;
 
     // DRIVING STATS, for this session: best speed, and the longest time and distance off the ground.
     private const float MinJumpSeconds = 0.4f;
@@ -75,7 +83,7 @@ internal sealed partial class Batmobile : Module
         _units = AddChoice("batmobile_speed_units", "SPEEDOMETER UNITS", "Chooses the unit shown on the Batmobile speedometer.", new[] { "mph", "kmh" }, new[] { "MPH", "KM/H" }).Pref();
         _stats = AddToggle("batmobile_trip_stats", "DRIVING STATS", "Adds your best speed and longest jump of this session to the speedometer.").Pref();
         AddCommand("batmobile_trip_reset", "RESET DRIVING STATS", "Starts the best speed and longest jump on the speedometer again from zero.", ResetStats);
-        AddToggle("vehicle_radar_on_foot", "VEHICLE RADAR ON FOOT", "The minimap keeps showing militia drones and tanks while you are on foot, not only the heavy tanks.",
+        _radarOnFoot = AddToggle("vehicle_radar_on_foot", "VEHICLE RADAR ON FOOT", "The minimap keeps showing militia drones and tanks while you are on foot, not only the heavy tanks.",
             on => { if (!on) _radar.Restore(); }).Maintain(() => { if (World.Pc is { } pc) _radar.Set(pc, true); });
 
         AddCommand("rescue_batmobile", "RESCUE BATMOBILE", "Puts a stuck or flipped Batmobile back on its wheels.", () => World.RequireCheats().RescueBatmobile());
@@ -89,6 +97,7 @@ internal sealed partial class Batmobile : Module
         RestoreDrive();
         RestoreMissileCap();
         RestoreRemoteAndPursuit();
+        ReturnRadarCar();
         _radar.Restore();
         _battleForcedCar = 0;
         _airFor = -1f;
@@ -106,7 +115,42 @@ internal sealed partial class Batmobile : Module
         RestoreGrip();
         RestoreMissileCap();
         RestoreRemoteAndPursuit();
+        ReturnRadarCar();
         _radar.Restore();
+    }
+
+    [Redirect(typeof(RPlayerController), nameof(RPlayerController.UpdatePlayerWaypoint))]
+    private static void UpdatePlayerWaypointRedirect(RPlayerController self)
+    {
+        self.UpdatePlayerWaypoint();
+        Safe.Run("vehicle radar lend", () => I.LendRadarCar(self));
+    }
+
+    [Redirect(typeof(RForensicsDevice), nameof(RForensicsDevice.PreRender))]
+    private static void ForensicsPreRenderRedirect(RForensicsDevice self)
+    {
+        Safe.Run("vehicle radar return", I.ReturnRadarCar);
+        self.PreRender();
+    }
+
+    private void LendRadarCar(RPlayerController pc)
+    {
+        if (!_radarOnFoot.On || !pc.bAlwaysShowVehicleRadar || World.Pawn is RVehicleBatmobileBase || pc.BatmobilePawn is { IsValid: true })
+            return;
+
+        if (Car() is not { IsValid: true, bDeleteMe: false } car)
+            return;
+
+        pc.BatmobilePawn = car;
+        _radarLentTo = pc;
+    }
+
+    private void ReturnRadarCar()
+    {
+        RPlayerController? pc = _radarLentTo;
+        _radarLentTo = null;
+        if (pc is { IsValid: true } && pc.Pawn is not RVehicleBatmobileBase)
+            pc.BatmobilePawn = null;
     }
 
     private void RestoreRemoteAndPursuit()
