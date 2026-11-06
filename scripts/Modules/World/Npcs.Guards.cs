@@ -312,7 +312,6 @@ internal sealed partial class Npcs
         if (ai.bInCombat)
             ai.ExitCombat();
 
-        ComboHits(v, l);
         float gap = Vector3.Distance(v.Location, target.Location);
         if (l.FacingAt != target.Ptr && gap < FaceRange)
         {
@@ -492,6 +491,63 @@ internal sealed partial class Npcs
             v.ChangeMovementStance(Standing_);
         if (v.GetWeaponStance().Index != Relaxed.Index)
             v.ChangeWeaponStance(Relaxed);
+    }
+
+    /// <summary>
+    /// A turncoat's end of fight: out of the game's combat, no stand-in, and once his last attack is over and he's
+    /// been idle a moment, no following his last man and his guard lowered (see <see cref="StandEasy"/>).
+    /// </summary>
+    private void StandDown(RPawnVillain v, Loyal l, double now)
+    {
+        if (v.AIController is { IsValid: true } ai)
+        {
+            if (ai.bInCombat)
+                ai.ExitCombat();
+            DropStandIn(ai);
+        }
+
+        if (l.FacingAt != 0)
+        {
+            l.FacingAt = 0;
+            v.StopFaceAt();
+        }
+
+        if (l.Fought && now - l.FoughtAt > StandEasyAfter && v.CombatMove is not { IsValid: true })
+        {
+            l.Fought = false;
+            StopFollowing(v);
+            StandEasy(v);
+        }
+    }
+
+    private const double AssistGapMin = 0.6;
+    private const double AssistGapMax = 1.4;
+
+    /// <summary>
+    /// GANG WAR, FREE FOR ALL and enemies fighting your bodyguards stay in the game's combat (they're still enemies,
+    /// and Batman can still hit them), but that combat waits for a turn against Batman, so their fights with each
+    /// other were half-hearted. Within reach of their man, Oracle starts the attack itself with SpawnMove, a little
+    /// less often than a bodyguard. Being in combat gives the move the combat behaviour it needs.
+    /// </summary>
+    private void Assist(RPawnVillain v, Loyal l, RPawnVillain target, double now)
+    {
+        if (now < l.NextSwing || v.CombatMove is { IsValid: true } || v.IsStunned() || v.AIController is not { IsValid: true } ai)
+            return;
+
+        float gap = Vector3.Distance(v.Location, target.Location);
+        if (gap > (v.CurrWeapon is { IsValid: true } ? WeaponReach : FistReach))
+            return;
+
+        if (!ai.bInCombat)
+            ai.EnterCombat(false, true, false);
+        if (!ai.bInCombat || ai.CombatBehaviour is not { IsValid: true })
+            return;
+
+        l.NextSwing = now + AssistGapMin + Random.Shared.NextDouble() * (AssistGapMax - AssistGapMin);
+        Class cls = v.GetAttackMoveClass() is { IsValid: true } c ? c : RCombatMove_VillainCloseAttack.StaticClass();
+        v.SpawnMove(cls);
+        if (v.CombatMove is RCombatMove_VillainAttack { IsValid: true } m && m.Target?.Ptr != target.Ptr)
+            m.Target = target;
     }
 
     /// <summary>Guards out of the scan's reach (you went far) still get to follow and catch up.</summary>

@@ -1073,6 +1073,7 @@ internal sealed partial class Npcs : Module
                 else
                     Steer(v, l, near, choose);
                 WatchHits(v, l);
+                ComboHits(v, l);
             }
         }
 
@@ -1155,6 +1156,7 @@ internal sealed partial class Npcs : Module
             return;
         }
 
+        double clock = Clock.Now;
         if (target == null)
         {
             // Nobody left on the other side: stand down rather than go back to fighting you.
@@ -1167,6 +1169,18 @@ internal sealed partial class Npcs : Module
                 l.Benched = true;
             }
 
+            // A turncoat ends his fight the way a bodyguard does (out of combat, guard lowered), without following you.
+            if (l.Team == WithYou)
+                Safe.Run("turncoat stand down", () => StandDown(v, l, clock));
+            return;
+        }
+
+        // Turncoats (TURN NEAREST ENEMY, the editor's TURN, spawned ON YOUR SIDE) fight the way bodyguards do: melee run
+        // by Oracle out of the game's Batman-centred combat, gunmen moving until they have a shot. Only whom they pick
+        // (the nearest, kept until he's down) and what they do afterwards differ.
+        if (l.Team == WithYou && World.Pawn is { } you)
+        {
+            Engage(v, l, target, you, clock);
             return;
         }
 
@@ -1193,9 +1207,14 @@ internal sealed partial class Npcs : Module
             v.OverrideTargetPawn = target;
 
         if (v.CurrentGun is { IsValid: true })
-            Shoot(v, l, target, null, Clock.Now);
+        {
+            Shoot(v, l, target, null, clock);
+        }
         else
+        {
             StopShooting(v, l);
+            Assist(v, l, target, clock);
+        }
     }
 
     // ---- turncoat hits
