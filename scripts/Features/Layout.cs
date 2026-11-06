@@ -220,7 +220,7 @@ internal static class Layout
         ("SYSTEM/GAME", new Section[]
         {
             new("BEHAVIOUR", "run_unfocused", "pad_unfocused", "game_debug_keys"),
-            new("GRAPHICS", "building_detail", "character_detail", "texture_memory"),
+            new("GRAPHICS", "building_detail", "character_detail"),
             new("PERFORMANCE", "frame_cap"),
         }),
         ("SYSTEM/SAVES", new Section[]
