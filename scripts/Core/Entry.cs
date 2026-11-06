@@ -17,6 +17,9 @@ public sealed class OracleMod : Script
 
     public override void OnTick() => Safe.Run("tick", App.SdkTick);
 
+    /// <summary>One rendered frame, from the viewport: keeps running when game ticks stop (pause, cutscenes).</summary>
+    public override void OnDraw(BmSDK.Engine.Canvas canvas) => Safe.Run("frame", () => App.Frame(canvas));
+
     public override void OnKeyDown(Keys key) => Safe.Run("key", () => App.SdkKey(key));
 
     public override void OnUnload() => Safe.Run("unload", App.Stop);

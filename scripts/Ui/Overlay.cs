@@ -282,14 +282,3 @@ internal static class Overlay
             Hud.Chip(cx, y + h * 0.5f, state, col, 0.1f);
     }
 }
-
-/// <summary>Drives the per-frame update from the viewport, which keeps running when game ticks stop.</summary>
-internal static class RenderHook
-{
-    [Redirect(typeof(GameViewportClient), "PostRender")]
-    private static void PostRender(GameViewportClient self, Canvas canvas)
-    {
-        self.PostRender(canvas);
-        Safe.Run("frame", () => App.Frame(canvas));
-    }
-}

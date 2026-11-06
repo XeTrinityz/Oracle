@@ -118,7 +118,7 @@ internal static class App
         Menu.Tick(dt);
     }
 
-    /// <summary>One rendered frame. Runs inside the PostRender redirect, so nothing here may throw.</summary>
+    /// <summary>One rendered frame. Runs from BmSDK's OnDraw (the viewport's PostRender), so nothing here may throw.</summary>
     public static void Frame(Canvas canvas)
     {
         if (!_started)

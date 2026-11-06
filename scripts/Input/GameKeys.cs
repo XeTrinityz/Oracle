@@ -5,9 +5,10 @@ namespace CeZeY.Oracle;
 
 /// <summary>
 /// Keeps the game from acting on the keys the open menu uses (letters for search, ENTER, the arrows and so on).
-/// The game ignores IgnoreButtonInput, so this renames those keys in the player's binding table while the menu is
-/// open and puts back exactly what it renamed when it closes. Only the 8-byte key name of each binding is touched,
-/// never its command string, so no game-owned memory changes hands.
+/// Keys and mouse buttons are swallowed through BmSDK (<see cref="Keyboard"/>): their presses never reach the game's
+/// input at all, while Oracle still sees them. The mouse axes and wheel are not keys, so for those this still renames
+/// the bindings in the player's binding table while the menu is open and puts back exactly what it renamed when it
+/// closes. Only the 8-byte key name of each binding is touched, never its command string.
 /// </summary>
 internal static unsafe class GameKeys
 {
@@ -22,32 +23,26 @@ internal static unsafe class GameKeys
     private const int MaxCommand = 4096;
     private const int MinKeyHits = 8;
 
-    /// <summary>The game's names for the keys the menu uses. Escape stays live so the pause menu still opens.</summary>
-    private static readonly string[] KeyNames = BuildNames();
+    /// <summary>The keys the menu uses, swallowed while it is open. Escape stays live so the pause menu still opens.</summary>
+    private static readonly Keys[] MenuKeys = BuildMenuKeys();
+
+    /// <summary>The mouse buttons: swallowed by the radial (clicking a slot mustn't throw a punch) and by editor mode.</summary>
+    private static readonly Keys[] MouseButtons = { Keys.LButton, Keys.RButton, Keys.MButton, Keys.XButton1, Keys.XButton2 };
+
+    /// <summary>The modifier keys editor mode uses. Windows reports them without a side, so the plain keys are swallowed.</summary>
+    private static readonly Keys[] Modifiers = { Keys.ShiftKey, Keys.ControlKey, Keys.Menu };
 
     /// <summary>
-    /// What the radial mutes on top of the menu's keys: the mouse axes, so pointing doesn't turn the camera, and the
-    /// buttons, so clicking a slot doesn't throw a punch.
+    /// Bindings renamed rather than swallowed, because they aren't keys: the mouse axes (the radial, so pointing
+    /// doesn't turn the camera) and the wheel (the radial and editor mode).
     /// </summary>
-    private static readonly string[] PointerNames =
-    {
-        "MouseX", "MouseY", "LeftMouseButton", "RightMouseButton", "MiddleMouseButton", "ThumbMouseButton", "ThumbMouseButton2", "MouseScrollUp", "MouseScrollDown",
-    };
-
-    /// <summary>
-    /// What editor mode mutes on top of the menu's keys: the mouse buttons and modifier keys it uses, but not the
-    /// mouse axes, so the mouse still turns the camera while clicks select and grab.
-    /// </summary>
-    private static readonly string[] EditorNames =
-    {
-        "LeftMouseButton", "RightMouseButton", "MiddleMouseButton", "ThumbMouseButton", "ThumbMouseButton2", "MouseScrollUp", "MouseScrollDown",
-        "LeftShift", "RightShift", "LeftControl", "RightControl", "LeftAlt", "RightAlt",
-    };
+    private static readonly string[] AxisNames = { "MouseX", "MouseY" };
+    private static readonly string[] WheelNames = { "MouseScrollUp", "MouseScrollDown" };
 
     private static readonly List<(int Slot, int Index, int Number)> _muted = new();
-    private static HashSet<int>? _keys;
-    private static HashSet<int>? _pointerKeys;
-    private static HashSet<int>? _editorKeys;
+    private static readonly List<Keys> _swallowed = new();
+    private static HashSet<int>? _axisBindings;
+    private static HashSet<int>? _wheelBindings;
     private static int _mark = -1;
     private static readonly List<(int Slot, int Index, int Number, string Command)> _blocked = new();
     private static nint _blockedInput;
@@ -57,14 +52,12 @@ internal static unsafe class GameKeys
     private static bool _warned;
     private static bool _reported;
 
-    private static HashSet<int> Keys => _keys ??= KeyNames.Select(n => new FName(n).Index).ToHashSet();
+    private static HashSet<int> AxisBindings => _axisBindings ??= AxisNames.Concat(WheelNames).Select(n => new FName(n).Index).ToHashSet();
 
-    private static HashSet<int> PointerKeys => _pointerKeys ??= KeyNames.Concat(PointerNames).Select(n => new FName(n).Index).ToHashSet();
+    private static HashSet<int> WheelBindings => _wheelBindings ??= WheelNames.Select(n => new FName(n).Index).ToHashSet();
 
-    private static HashSet<int> EditorKeys => _editorKeys ??= KeyNames.Concat(EditorNames).Select(n => new FName(n).Index).ToHashSet();
-
-    /// <summary>True while some game keys are renamed away. Whoever muted last owns them; the menu closing unmutes all.</summary>
-    public static bool IsMuted => _muted.Count > 0;
+    /// <summary>True while game keys are swallowed or renamed away. Whoever muted last owns them; the menu closing unmutes all.</summary>
+    public static bool IsMuted => _swallowed.Count > 0 || _muted.Count > 0;
 
     /// <summary>
     /// Mutes the menu's keys, with <paramref name="pointer"/> the mouse as well, with <paramref name="editor"/> the
@@ -74,34 +67,44 @@ internal static unsafe class GameKeys
     public static void Mute(PlayerController pc, bool pointer = false, bool escape = false, bool editor = false)
     {
         Unmute(pc);
-        PlayerInput? input = pc.PlayerInput;
-        if (input == null)
-            return;
 
-        if (!Read(input.Bindings.Ptr, out byte* data, out int count))
-            return;
-
-        if (_mark < 0)
-            _mark = new FName("OracleMenuMuted").Index;
-
-        HashSet<int> keys = pointer ? PointerKeys : editor ? EditorKeys : Keys;
+        // Keys and mouse buttons: swallowed before the game's input sees them.
+        _swallowed.AddRange(MenuKeys);
+        if (pointer || editor)
+            _swallowed.AddRange(MouseButtons);
+        if (editor)
+            _swallowed.AddRange(Modifiers);
         if (escape)
-            keys = new HashSet<int>(keys) { new FName("Escape").Index };
-        for (int i = 0; i < count; i++)
-        {
-            int* name = (int*)(data + i * _stride);
-            if (name[1] != 0 || !keys.Contains(name[0]))
-                continue;
+            _swallowed.Add(Keys.Escape);
+        foreach (Keys key in _swallowed)
+            Keyboard.Swallow(key);
 
-            _muted.Add((i, name[0], name[1]));
-            name[0] = _mark;
+        // Mouse axes and wheel: not keys, so their bindings are renamed instead.
+        HashSet<int>? bindings = pointer ? AxisBindings : editor ? WheelBindings : null;
+        int renamed = 0, count = 0;
+        if (bindings != null && pc.PlayerInput is { } input && Read(input.Bindings.Ptr, out byte* data, out count))
+        {
+            if (_mark < 0)
+                _mark = new FName("OracleMenuMuted").Index;
+
+            for (int i = 0; i < count; i++)
+            {
+                int* name = (int*)(data + i * _stride);
+                if (name[1] != 0 || !bindings.Contains(name[0]))
+                    continue;
+
+                _muted.Add((i, name[0], name[1]));
+                name[0] = _mark;
+                renamed++;
+            }
+
+            _input = input.Ptr;
         }
 
-        _input = input.Ptr;
         if (!_reported)
         {
             _reported = true;
-            Log.Info("Menu keys: " + count + " game bindings at " + _stride + " bytes each, " + _muted.Count + " switched off while the menu is open.");
+            Log.Info("Menu keys: " + _swallowed.Count + " keys swallowed while the menu is open" + (bindings != null ? ", " + renamed + " of " + count + " mouse bindings renamed." : "."));
         }
     }
 
@@ -111,6 +114,10 @@ internal static unsafe class GameKeys
     /// </summary>
     public static void Unmute(PlayerController? pc)
     {
+        foreach (Keys key in _swallowed)
+            Keyboard.Unswallow(key);
+        _swallowed.Clear();
+
         if (_muted.Count == 0)
             return;
 
@@ -336,9 +343,17 @@ internal static unsafe class GameKeys
         return true;
     }
 
+    /// <summary>Binding key names any sane binding table contains, used only to recognise the array before writing to it.</summary>
+    private static HashSet<int> KnownNames => _knownNames ??=
+        Enumerable.Range('A', 26).Select(c => ((char)c).ToString())
+            .Concat(new[] { "Enter", "SpaceBar", "Escape", "MouseX", "MouseY", "LeftMouseButton", "RightMouseButton", "Up", "Down" })
+            .Select(n => new FName(n).Index).ToHashSet();
+
+    private static HashSet<int>? _knownNames;
+
     private static int KeyHits(byte* items, int n, int stride)
     {
-        HashSet<int> keys = Keys;
+        HashSet<int> keys = KnownNames;
         int hits = 0;
         for (int i = 0; i < n; i++)
         {
@@ -360,16 +375,19 @@ internal static unsafe class GameKeys
         return false;
     }
 
-    private static string[] BuildNames()
+    private static Keys[] BuildMenuKeys()
     {
-        var names = new List<string>
+        var keys = new List<Keys>
         {
-            "Enter", "SpaceBar", "BackSpace", "Tab", "Home", "Delete", "Insert", "PageUp", "PageDown", "Up", "Down", "Left", "Right",
-            "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-            "NumPadZero", "NumPadOne", "NumPadTwo", "NumPadThree", "NumPadFour", "NumPadFive", "NumPadSix", "NumPadSeven", "NumPadEight", "NumPadNine",
+            Keys.Enter, Keys.Space, Keys.Back, Keys.Tab, Keys.Home, Keys.Delete, Keys.Insert, Keys.PageUp, Keys.PageDown,
+            Keys.Up, Keys.Down, Keys.Left, Keys.Right,
         };
-        for (char c = 'A'; c <= 'Z'; c++)
-            names.Add(c.ToString());
-        return names.ToArray();
+        for (Keys k = Keys.D0; k <= Keys.D9; k++)
+            keys.Add(k);
+        for (Keys k = Keys.NumPad0; k <= Keys.NumPad9; k++)
+            keys.Add(k);
+        for (Keys k = Keys.A; k <= Keys.Z; k++)
+            keys.Add(k);
+        return keys.ToArray();
     }
 }
