@@ -1,6 +1,6 @@
 # Oracle: Trinity Edition
 
-An in-game cheat and tweak menu for **Batman: Arkham Knight** (PC), built on [BmSDK-AK](https://github.com/Team-BmSDK/BmSDK-AK).
+An in-game cheat and tweak menu for **Batman: Arkham Knight** (PC), built on [BmSDK-AK](https://github.com/Team-BmSDK/BmSDK-AK) with the fixes in [XeTrinityz/BmSDK-AK](https://github.com/XeTrinityz/BmSDK-AK).
 Press **F3** in game to open it, or hold **BACK (View)** on an Xbox controller.
 
 This is a fork of **Oracle by ZeidCeZeY**. It started from his mod and has since been rebuilt and expanded a lot.
@@ -117,7 +117,11 @@ Removed from the original: the FUN page (stamina and fall damage).
 
 ## Install
 
-1. Install [BmSDK-AK](https://github.com/Team-BmSDK/BmSDK-AK) (Oracle targets v0.21.0).
+1. Install [BmSDK-AK](https://github.com/Team-BmSDK/BmSDK-AK) v0.21.0, then replace its
+   `Binaries/Win64/sdk/BmSDK.dll` with the one from [XeTrinityz/BmSDK-AK](https://github.com/XeTrinityz/BmSDK-AK).
+   Oracle needs that fork's fixes to how game functions are called (out parameters, arrays returned by the game,
+   optional text arguments); they are proposed upstream in
+   [BmSDK-AK #15](https://github.com/Team-BmSDK/BmSDK-AK/pull/15).
 2. Put this folder in `Batman Arkham Knight/BmGame/Mods/` so you have `BmGame/Mods/Oracle/mod.toml`.
 3. Start the game and press **F3**.
 

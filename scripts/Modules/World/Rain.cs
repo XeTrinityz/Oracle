@@ -148,8 +148,9 @@ internal sealed class Rain : Module
     /// <summary>
     /// Uses the script function IsGasActive (the story's toxin side chapter, or the GasActiveInOverworld flag), an
     /// ordinary call on the game info. Never the static natives IsFearGasActive/IsLocationInFearGas/
-    /// GetFearGasHeightAtLocation: BmSDK calls a static native with no object behind it, and IsFearGasActive
-    /// crashed the game in coreclr twice on 2026-11-05, which no try/catch can stop.
+    /// GetFearGasHeightAtLocation: BmSDK runs a static function on the class default object, which these natives
+    /// evidently can't work from, and IsFearGasActive crashed the game in coreclr twice on 2026-11-05, which no
+    /// try/catch can stop.
     /// </summary>
     private static void WarnNoCloud(float v)
     {

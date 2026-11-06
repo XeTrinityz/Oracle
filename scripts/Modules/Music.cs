@@ -179,6 +179,8 @@ internal sealed class Music : Module
     private string _playingSound = "";
     private string _transitionPlaying = "";
     private nint _attachedTo;
+    private AkWwise.FAkSoundHandle _handle;
+    private bool _hasHandle;
     private (int Music, int Dialogue)? _volumes;
     private readonly List<AkParameterName> _quietened = new();
 
@@ -325,7 +327,8 @@ internal sealed class Music : Module
     /// <summary>
     /// Starts a sound or music state by its key, for the browser and the teleport screen. A sound event is
     /// attached to the player, the way the game attaches gadget and vehicle sounds: many events are positional
-    /// with a short range (the Penguin van's jingle), and on a global source they played in silence.
+    /// with a short range (the Penguin van's jingle), and on a global source they played in silence. The sound's
+    /// handle is kept, so <see cref="Finish"/> stops exactly this instance, not every play of the same event.
     /// </summary>
     private bool Start(string key, AkWwise.EGlobalAudioSourceID source)
     {
@@ -340,13 +343,17 @@ internal sealed class Music : Module
 
         if (World.Pawn is { IsValid: true } pawn)
         {
-            pawn.AddLoopingAudioEvent(sound);
+            _handle = pawn.StartAudioEvent(sound, 0, 0);
             _attachedTo = pawn.Ptr;
-            return true;
+        }
+        else
+        {
+            _handle = AkWwise.StartGlobalAudioEvent(sound, source, 0, 0);
+            _attachedTo = 0;
         }
 
-        _attachedTo = 0;
-        return AkWwise.AddGlobalLoopingEvent(sound, source);
+        _hasHandle = true;
+        return true;
     }
 
     private void Finish(string key)
@@ -357,13 +364,17 @@ internal sealed class Music : Module
             return;
         }
 
-        if (FindSound(key) is not { } sound)
+        if (!_hasHandle)
             return;
 
+        AkWwise.FAkSoundHandle handle = _handle;
+        _handle = default;
+        _hasHandle = false;
+
         if (_attachedTo != 0 && World.Pawn is { IsValid: true } pawn && pawn.Ptr == _attachedTo)
-            pawn.RemoveLoopingAudioEvent(sound);
+            pawn.StopAudioEvent(out handle);
         else
-            AkWwise.RemoveGlobalLoopingEvent(sound);
+            AkWwise.StopGlobalAudioEvent(out handle);
         _attachedTo = 0;
     }
 
