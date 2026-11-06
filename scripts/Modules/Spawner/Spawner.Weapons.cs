@@ -26,7 +26,7 @@ internal sealed partial class Spawner
         _wpnWho = AddChoice("wpn_who", "WEAPON", "Hold to scroll. Every weapon class the game has loaded here, guns, blades, shields and throwable crates included. A weapon whose model isn't loaded here is refused when spawned.",
             new[] { "" }, new[] { "OPEN THE MENU IN GAME" }).Pref();
         _wpnWho.HoldToScroll = true;
-        AddCommand("wpn_refresh", "REFRESH LIST", "Reads again which weapons are loaded here.", () => RefreshCatalogs(true)).Setting();
+        AddCommand("wpn_refresh", "REFRESH LIST", "Reads again which weapons are loaded here.", () => RefreshWeapons(true)).Setting();
         AddCommand("wpn_spawn", "DROP ON THE GROUND", "Lays the weapon above on the ground, HOW MANY times, the way PLACE says. Thugs nearby will pick them up and use them.", () => SpawnWeapons(PickedWeapon()));
         AddCommand("wpn_give", "GIVE TO SELECTED", "Puts the weapon above in the hands of the character the world editor has selected (or the newest character you spawned).", GiveWeapon);
     }
@@ -46,12 +46,12 @@ internal sealed partial class Spawner
     private WeaponRecipe PickedWeapon()
     {
         if (_weapons.Count == 0)
-            RefreshCatalogs(false);
+            RefreshWeapons(false, force: true);
         string key = _wpnWho.CurrentKey;
         WeaponRecipe r = _weapons.Find(w => w.Key == key) ?? throw new InvalidOperationException("no weapon picked: REFRESH LIST");
         if (!r.Class.IsValid)
         {
-            RefreshCatalogs(false);
+            RefreshWeapons(false, force: true);
             throw new InvalidOperationException("that weapon has unloaded: pick again");
         }
 

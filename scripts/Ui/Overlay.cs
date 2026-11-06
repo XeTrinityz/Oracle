@@ -69,6 +69,7 @@ internal static class Overlay
 
         Dt = _frame.Step(MaxFrame);
         Time += Dt;
+        Frame++;
 
         Theme.Update(Dt);
         Fader.Advance(Dt);

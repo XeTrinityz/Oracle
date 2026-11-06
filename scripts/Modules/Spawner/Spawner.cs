@@ -147,9 +147,14 @@ internal sealed partial class Spawner : Module
         if (!World.InGame || !_upkeep.Elapsed(UpkeepSeconds))
             return;
 
-        // The lists are read when a SPAWNER tab is looked at, not on every menu open: the reads walk thousands of objects.
-        if (Showing)
-            RefreshCatalogsIfStale();
+        // A list is read when its tab is opened (see RefreshTab), not on every menu open or on a timer.
+        string tab = Showing ? Menu.Current.Title : "";
+        if (tab != _shownTab)
+        {
+            _shownTab = tab;
+            if (tab.Length > 0)
+                Safe.Run("spawner lists", () => RefreshTab(tab));
+        }
         if (_spawns.Count == 0)
             return;
 

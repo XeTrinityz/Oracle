@@ -16,7 +16,6 @@ internal sealed partial class Spawner
     private const float CharacterFootprint = 60f;
     private const float CharacterLift = 100f;
     private const float FollowGap = 250f;
-    private const double CatalogSeconds = 5.0;
 
     private Choice _chrGroup = null!;
     private Choice _chrWho = null!;
@@ -27,7 +26,7 @@ internal sealed partial class Spawner
     private Slider _chrSize = null!;
 
     private List<CharacterRecipe> _characters = new();
-    private double _catalogAt = double.MinValue;
+    private string _shownTab = "";
 
     private enum Side
     {
@@ -52,7 +51,7 @@ internal sealed partial class Spawner
         _chrWho = AddChoice("chr_who", "WHO", "Hold to scroll. Everyone this part of the game can build: people around you and the ones its missions and streets spawn. The list follows where you are.",
             new[] { "" }, new[] { "OPEN THE MENU IN GAME" }).Pref();
         _chrWho.HoldToScroll = true;
-        AddCommand("chr_refresh", "REFRESH LIST", "Reads again who can be spawned here. Do it after travelling somewhere new.", () => RefreshCatalogs(true)).Setting();
+        AddCommand("chr_refresh", "REFRESH LIST", "Reads again who can be spawned here. Do it after travelling somewhere new.", () => RefreshCharacters(true)).Setting();
 
         _chrSide = AddChoice("chr_side", "SIDE", "Who they fight. HOSTILE: you. PASSIVE: nobody, even when hit. ON YOUR SIDE: the other enemies. BODYGUARD: follows you everywhere and protects you.",
             new[] { "hostile", "passive", "ally", "guard" }, new[] { "HOSTILE", "PASSIVE", "ON YOUR SIDE", "BODYGUARD" }).Pref();
@@ -73,39 +72,69 @@ internal sealed partial class Spawner
         _vehicles.Clear();
         _meshes.Clear();
         _weapons.Clear();
-        _catalogAt = double.MinValue;
+        _shownTab = "";
     }
 
-    private void RefreshCatalogsIfStale()
+    /// <summary>
+    /// A SPAWNER tab was opened: its list is read now. The reads walk thousands of objects (every spawner, every
+    /// loaded class, every mesh actor nearby), so they happen on opening a tab and on REFRESH, never on a timer.
+    /// </summary>
+    private void RefreshTab(string tab)
     {
-        if (World.InGame && Clock.Now - _catalogAt >= CatalogSeconds)
-            RefreshCatalogs(false);
-    }
-
-    /// <summary>Re-reads every list. <paramref name="tell"/> says what was found, for the REFRESH rows.</summary>
-    private void RefreshCatalogs(bool tell)
-    {
-        if (!World.InGame)
+        switch (tab)
         {
-            if (tell)
-                throw new InvalidOperationException("only in game");
-            return;
+            case "CHARACTERS":
+                RefreshCharacters(false);
+                RefreshWeapons(false);
+                break;
+            case "VEHICLES":
+                RefreshVehicles(false);
+                break;
+            case "WEAPONS":
+                RefreshWeapons(false);
+                break;
+            case "OBJECTS":
+                if (_objSource.Index == 0 || _meshes.Count == 0)
+                {
+                    ReadMeshes();
+                    ListMeshes();
+                }
+                break;
         }
+    }
 
-        _catalogAt = Clock.Now;
+    private static bool InGameOrRefuse(bool tell) =>
+        World.InGame || (tell ? throw new InvalidOperationException("only in game") : false);
+
+    private void RefreshCharacters(bool tell)
+    {
+        if (!InGameOrRefuse(tell))
+            return;
         Safe.Run("spawner characters", () => _characters = SpawnCatalog.Characters());
-        Safe.Run("spawner vehicles", () => _vehicles = SpawnCatalog.Vehicles());
-        Safe.Run("spawner weapons", () => _weapons = SpawnCatalog.Weapons());
-
-        // Every loaded mesh is tens of thousands of objects: that list is only read when asked for (FROM, SHOW, REFRESH).
-        if (tell || _objSource.Index == 0 || _meshes.Count == 0)
-            Safe.Run("spawner meshes", ReadMeshes);
         ListCharacters();
-        ListVehicles();
-        ListWeapons();
-        ListMeshes();
         if (tell)
-            Overlay.Notice(NoticeTitle, Fmt.Plural(_characters.Count, "CHARACTER") + ", " + Fmt.Plural(_vehicles.Count, "VEHICLE") + ", " + Fmt.Plural(_weapons.Count, "WEAPON"), true);
+            Overlay.Notice(NoticeTitle, Fmt.Plural(_characters.Count, "CHARACTER") + " LISTED", true);
+    }
+
+    private void RefreshVehicles(bool tell)
+    {
+        if (!InGameOrRefuse(tell))
+            return;
+        Safe.Run("spawner vehicles", () => _vehicles = SpawnCatalog.Vehicles());
+        ListVehicles();
+        if (tell)
+            Overlay.Notice(NoticeTitle, Fmt.Plural(_vehicles.Count, "VEHICLE") + " LISTED", true);
+    }
+
+    /// <summary>Loaded weapon classes barely change within an area, so they're read once per world unless asked.</summary>
+    private void RefreshWeapons(bool tell, bool force = false)
+    {
+        if (!InGameOrRefuse(tell) || (!tell && !force && _weapons.Count > 0))
+            return;
+        Safe.Run("spawner weapons", () => _weapons = SpawnCatalog.Weapons());
+        ListWeapons();
+        if (tell)
+            Overlay.Notice(NoticeTitle, Fmt.Plural(_weapons.Count, "WEAPON") + " LISTED", true);
     }
 
     private void ListCharacters()
@@ -124,12 +153,12 @@ internal sealed partial class Spawner
     private CharacterRecipe PickedCharacter()
     {
         if (_characters.Count == 0)
-            RefreshCatalogs(false);
+            RefreshCharacters(false);
         string key = _chrWho.CurrentKey;
         CharacterRecipe r = _characters.Find(c => c.Key == key) ?? throw new InvalidOperationException("nobody to spawn here: REFRESH LIST near some people");
         if (!r.Loaded)
         {
-            RefreshCatalogs(false);
+            RefreshCharacters(false);
             throw new InvalidOperationException("that character has unloaded: pick again");
         }
 

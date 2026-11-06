@@ -32,7 +32,7 @@ internal sealed partial class Spawner
         _vehWho = AddChoice("veh_who", "VEHICLE", "Hold to scroll. Every vehicle template the game has loaded: militia tanks and drones are loaded across the city, cars follow the district you're in.",
             new[] { "" }, new[] { "OPEN THE MENU IN GAME" }).Pref();
         _vehWho.HoldToScroll = true;
-        AddCommand("veh_refresh", "REFRESH LIST", "Reads again which vehicles can be spawned here.", () => RefreshCatalogs(true)).Setting();
+        AddCommand("veh_refresh", "REFRESH LIST", "Reads again which vehicles can be spawned here.", () => RefreshVehicles(true)).Setting();
 
         _vehSide = AddChoice("veh_side", "SIDE", "HOSTILE vehicles are the militia's. ON YOUR SIDE hacks them the way the drone hacker does, so they fight the militia; the hack lasts until you delete them.",
             new[] { "hostile", "ally" }, new[] { "HOSTILE", "ON YOUR SIDE" }).Pref();
@@ -58,12 +58,12 @@ internal sealed partial class Spawner
     private VehicleRecipe PickedVehicle()
     {
         if (_vehicles.Count == 0)
-            RefreshCatalogs(false);
+            RefreshVehicles(false);
         string key = _vehWho.CurrentKey;
         VehicleRecipe r = _vehicles.Find(v => v.Key == key) ?? throw new InvalidOperationException("no vehicles loaded here: REFRESH LIST");
         if (!r.Archetype.IsValid)
         {
-            RefreshCatalogs(false);
+            RefreshVehicles(false);
             throw new InvalidOperationException("that vehicle has unloaded: pick again");
         }
 

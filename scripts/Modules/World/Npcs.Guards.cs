@@ -187,24 +187,65 @@ internal sealed partial class Npcs
 
     private static float Sq(float f) => f * f;
 
+    private const int SightChecks = 4;
+    private const double HostileCheckSeconds = 0.5;
+    private readonly List<(float Score, RPawnVillain Who)> _threats = new();
+
+    /// <summary>
+    /// The most urgent threat. Every candidate is scored without line of sight first; a gunman then traces only the
+    /// best few, since a trace per enemy per guard twice a second adds up in a big fight.
+    /// </summary>
     private RPawnVillain? PickThreat(RPawnVillain v, List<Pawn> near, Pawn me, out float bestScore)
     {
         bestScore = float.MaxValue;
         RPawnVillain? best = null;
+        bool gun = v.CurrentGun is { IsValid: true };
+        _threats.Clear();
         foreach (Pawn q in near)
         {
             if (q.Ptr == v.Ptr || q is not RPawnVillain { IsValid: true } other || !CanFight(WithYou, other) || !InReach(v, other, me))
                 continue;
 
-            float s = Score(v, other, me, false);
-            if (s < bestScore)
+            float s = Score(v, other, me, gun);
+            if (gun)
+            {
+                _threats.Add((s, other));
+            }
+            else if (s < bestScore)
             {
                 bestScore = s;
                 best = other;
             }
         }
 
+        if (!gun)
+            return best;
+
+        _threats.Sort((a, b) => a.Score.CompareTo(b.Score));
+        for (int i = 0; i < _threats.Count; i++)
+        {
+            (float s, RPawnVillain q) = _threats[i];
+            if (i < SightChecks && !Sees(v, q))
+                s += 2500f;
+            else if (i >= SightChecks)
+                s += 2500f; // unchecked: assumed hidden, so a man he's sure of beats him
+            if (s < bestScore)
+            {
+                bestScore = s;
+                best = q;
+            }
+        }
+
         return best;
+    }
+
+    /// <summary>Whether something else calmed him, asked of the game twice a second rather than every tick.</summary>
+    private static bool CalmedElsewhere(RPawnVillain v, Loyal l, double now)
+    {
+        if (now < l.NextHostileCheck)
+            return false;
+        l.NextHostileCheck = now + HostileCheckSeconds;
+        return !v.IsHostile();
     }
 
     /// <summary>
@@ -278,7 +319,7 @@ internal sealed partial class Npcs
         RBMAIController? ai = v.AIController is { IsValid: true } c ? c : null;
         if (v.CurrentGun is { IsValid: true })
         {
-            if (l.Benched || !v.IsHostile())
+            if (l.Benched || CalmedElsewhere(v, l, now))
             {
                 v.SetHostile(true, FName.None);
                 l.Benched = false;
@@ -554,7 +595,20 @@ internal sealed partial class Npcs
     private void StragglersCatchUp()
     {
         Pawn? me = World.Pawn;
-        if (me == null || !_team.Values.Any(l => l.Guard && l.SeenTick != _steerTick))
+        if (me == null)
+            return;
+
+        bool any = false;
+        foreach (Loyal l in _team.Values)
+        {
+            if (l.Guard && l.SeenTick != _steerTick)
+            {
+                any = true;
+                break;
+            }
+        }
+
+        if (!any)
             return;
 
         double now = Clock.Now;
@@ -648,9 +702,11 @@ internal sealed partial class Npcs
     // ---- hit effects
 
     private const string HitParticleName = "fx_FaceHit5_p";
-    private const double HitParticleRetry = 30.0;
+    
+    private const double HitParticleRetryMissing = 120.0;
 
     private static ParticleSystem? _hitParticle;
+    private static string _hitParticlePath = "";
     private static double _hitParticleLooked = double.MinValue;
 
     /// <summary>
@@ -718,12 +774,22 @@ internal sealed partial class Npcs
     {
         if (_hitParticle is { IsValid: true })
             return _hitParticle;
-        if (Clock.Now - _hitParticleLooked < HitParticleRetry)
+
+        // Once found, its path is a single engine lookup (StaticFindObject) whenever it's loaded again.
+        if (_hitParticlePath.Length > 0)
+        {
+            _hitParticle = Game.FindObject<ParticleSystem>(_hitParticlePath);
+            return _hitParticle is { IsValid: true } ? _hitParticle : null;
+        }
+
+        if (Clock.Now - _hitParticleLooked < HitParticleRetryMissing)
             return null;
 
         _hitParticleLooked = Clock.Now;
         _hitParticle = World.All<ParticleSystem>().FirstOrDefault(p => p.Name.ToString() == HitParticleName);
-        if (_hitParticle == null)
+        if (_hitParticle != null)
+            _hitParticlePath = _hitParticle.GetPathName(null);
+        else
             Log.Info("Turncoat hits: the " + HitParticleName + " spark isn't loaded here; hits play their sound only.");
         return _hitParticle;
     }

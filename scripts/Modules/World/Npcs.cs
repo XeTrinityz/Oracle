@@ -119,6 +119,7 @@ internal sealed partial class Npcs : Module
         public bool Fought;
         public double FoughtAt;
         public double SeenAt;
+        public double NextHostileCheck;
     }
     private int _nextGang;
     private Toggle _gangWar = null!;
@@ -1081,10 +1082,11 @@ internal sealed partial class Npcs : Module
             PruneTeam();
 
         // Bodyguards left far behind (you drove or glided off) are out of the scan; they still catch up.
-        Safe.Run("bodyguard catch-up", StragglersCatchUp);
+        Safe.Run("bodyguard catch-up", _stragglersStep ??= StragglersCatchUp);
     }
 
     private int _steerTick;
+    private Action? _stragglersStep; // made once: a method group passed as an Action is a new delegate every tick
     private Every _prune;
     private const double PruneSeconds = 2.0;
 
@@ -1184,7 +1186,7 @@ internal sealed partial class Npcs : Module
             return;
         }
 
-        if (l.Benched || !v.IsHostile())
+        if (l.Benched || CalmedElsewhere(v, l, clock))
         {
             v.SetHostile(true, FName.None);
             l.Benched = false;

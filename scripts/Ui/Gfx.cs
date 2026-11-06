@@ -34,6 +34,9 @@ internal static class Gfx
     public static float Dt;
     public static double Time;
 
+    /// <summary>Counts rendered frames, for work done once per frame however many HUDs ask for it.</summary>
+    public static int Frame;
+
     public static float W => C.ClipX;
 
     public static float H => C.ClipY;

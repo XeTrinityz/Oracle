@@ -22,6 +22,8 @@ internal static class WorldView
     /// <summary>True once this frame's camera is known. Stays true (with last frame's camera) between frames.</summary>
     public static bool Ready { get; private set; }
 
+    private static int _frame = -1;
+
     public static Vector3 Eye { get; private set; }
     public static Vector3 Forward { get; private set; }
     public static Vector3 Right { get; private set; }
@@ -34,6 +36,11 @@ internal static class WorldView
     /// <summary>Reads the camera for this frame. Call once at the start of drawing.</summary>
     public static void Begin(Canvas canvas)
     {
+        // Several HUDs (the editor's ESP, the bodyguard markers) draw in one frame; the camera is read once for all.
+        if (Ready && _frame == Gfx.Frame)
+            return;
+        _frame = Gfx.Frame;
+
         Ready = false;
         if (World.Pc is not { } pc)
             return;
