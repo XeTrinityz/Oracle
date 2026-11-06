@@ -302,12 +302,12 @@ internal static class Menu
                     if (!repeat)
                         GoBack();
                 }
-                else if (f != null && (!repeat || Repeats(f)) && f.Step(-1))
+                else if (f != null && (!repeat || Repeats(f)) && !Blocked(f, repeat) && f.Step(-1))
                     Commit(f);
 
                 return true;
             case Keys.Right:
-                if (f != null && (!repeat || Repeats(f)) && f.Step(1))
+                if (f != null && (!repeat || Repeats(f)) && !Blocked(f, repeat) && f.Step(1))
                     Commit(f);
                 return true;
             case Keys.Enter:
@@ -392,9 +392,19 @@ internal static class Menu
             Level = Level == 2 && Top.HasSub ? 1 : 0;
     }
 
+    /// <summary>A disabled row ignores the key; the first press (not its repeats) says why.</summary>
+    private static bool Blocked(Feature f, bool repeat)
+    {
+        if (f.Disabled == null)
+            return false;
+        if (!repeat)
+            Catalog.Refused(f);
+        return true;
+    }
+
     private static void ResetRow(Feature? f)
     {
-        if (f == null || f is Command || f.IsDefault)
+        if (f == null || f is Command || f.IsDefault || Blocked(f, false))
             return;
 
         f.ResetValue();
@@ -414,7 +424,7 @@ internal static class Menu
                 ResetRow(f);
                 break;
             default:
-                if (f.Step(1))
+                if (!Blocked(f, false) && f.Step(1))
                     Commit(f);
                 break;
         }

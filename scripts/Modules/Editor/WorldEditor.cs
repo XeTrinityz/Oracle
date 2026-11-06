@@ -364,6 +364,31 @@ internal sealed partial class WorldEditor : Module
         RefreshList();
     }
 
+    // ---- for the spawner
+
+    /// <summary>Selects an actor the spawner made, the same as picking it from the SELECTED list.</summary>
+    internal void Adopt(Actor a) => Select(Things.Wrap(a));
+
+    /// <summary>Lets go of an actor that's about to be deleted: no grab, no selection, no journal entry.</summary>
+    internal void Forsake(Actor a)
+    {
+        if (_selected != null && _selected.Ptr == a.Ptr)
+        {
+            if (_grab.On)
+            {
+                _holding = false;
+                _grab.On = false;
+            }
+
+            _selected = null;
+            SyncRows();
+        }
+
+        Edits.Drop(a);
+    }
+
+    internal void GoToSelected() => GoTo();
+
     /// <summary>Shows the selected object's state on the editor rows.</summary>
     private void SyncRows()
     {

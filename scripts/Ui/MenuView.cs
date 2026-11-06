@@ -787,6 +787,16 @@ internal static class MenuView
         int key = f.GetHashCode() * 8;
         float shift = Approach(key, sel ? 1f : 0f, 20f);
         float lx = left + S(4) * shift;
+
+        // A disabled row keeps its place but reads as unavailable: dimmed label, and the reason where its control was.
+        if (f.Disabled is { } why)
+        {
+            TextMid(lx, cy, f.Label, Rgba.Mix(Theme.Low, Theme.Mid, shift * 0.5f), LabelScale);
+            float cw = TextW(why, ChipScale) + S(9);
+            Chip(right - cw, cy, why, Theme.Low, 0.05f);
+            return;
+        }
+
         TextMid(lx, cy, f.Label, Rgba.Mix(Theme.Mid, Theme.Hi, shift), LabelScale);
         float end = lx + TextW(f.Label, LabelScale);
 
@@ -1155,8 +1165,9 @@ internal static class MenuView
         Rect(left, y, right - left, S(1), Theme.White, 0.06f);
 
         bool rows = Menu.InRows && f != null;
-        string text = rows ? HelpText(f!) : Summary(page);
-        Rgba col = rows && f!.ChangesSave ? Theme.Warn : rows ? Theme.Mid : Theme.Low;
+        string? off = rows ? f!.Disabled : null;
+        string text = rows ? (off != null ? "UNAVAILABLE: " + off + ". " + f!.Help : HelpText(f!)) : Summary(page);
+        Rgba col = off != null ? Theme.Low : rows && f!.ChangesSave ? Theme.Warn : rows ? Theme.Mid : Theme.Low;
         float ly = y + S(FooterPad);
         foreach (string line in Wrap(text, right - left))
         {
@@ -1298,15 +1309,17 @@ internal static class MenuView
             Choice => "NEXT",
             _ => "RUN",
         };
-        bool adjusts = f is Slider or Choice;
-        bool resets = f is { IsDefault: false } and not Command;
+        bool off = f?.Disabled != null;
+        bool adjusts = f is Slider or Choice && !off;
+        bool resets = f is { IsDefault: false } and not Command && !off;
         string pin = f != null && Favourites.Contains(f) ? "MOVE ON RADIAL" : "ADD TO RADIAL";
 
         if (Pad.InUse)
         {
             if (rows)
             {
-                _hints.Add(("A", verb));
+                if (!off)
+                    _hints.Add(("A", verb));
                 if (resets)
                     _hints.Add(("X", "RESET"));
                 if (f is { Bindable: true })
@@ -1326,7 +1339,8 @@ internal static class MenuView
 
         if (rows)
         {
-            _hints.Add(("ENTER", verb));
+            if (!off)
+                _hints.Add(("ENTER", verb));
             if (adjusts)
                 _hints.Add(("< >", "ADJUST"));
             if (resets)

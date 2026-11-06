@@ -94,6 +94,9 @@ internal static class Edits
     /// <summary>Drops every entry without touching the game. For a world change, when the objects are gone anyway.</summary>
     public static void Forget() => _edits.Clear();
 
+    /// <summary>Drops one object's entry without touching it, for an object about to be deleted (a spawn).</summary>
+    public static void Drop(Actor a) => _edits.Remove(a.Ptr);
+
     // ---- kinds of body
 
     /// <summary>Simulated by PhysX: vehicles and loose props. Moving one means moving its rigid body too.</summary>

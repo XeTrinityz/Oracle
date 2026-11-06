@@ -256,9 +256,22 @@ internal static class Catalog
             ApplyLogged(f, "settings.toml");
     }
 
+    /// <summary>True, with the reason on screen, when the row is disabled right now.</summary>
+    public static bool Refused(Feature f)
+    {
+        if (f.Disabled is not { } why)
+            return false;
+
+        Overlay.Notice(f.Label, why, false);
+        return true;
+    }
+
     /// <summary>Runs a command. Returns false, without throwing, if it failed.</summary>
     public static bool Run(Command c)
     {
+        if (Refused(c))
+            return false;
+
         if (!c.IsSetting && !World.InGame)
         {
             Log.Info(c.Label + " skipped: not in game.");
@@ -297,7 +310,7 @@ internal static class Catalog
         var commands = new List<Command>();
         foreach (Feature f in features)
         {
-            if (!f.Bindable)
+            if (!f.Bindable || Refused(f))
                 continue;
             if (f is Command c)
                 commands.Add(c);
@@ -353,7 +366,7 @@ internal static class Catalog
 
     public static void Hotkey(Feature f)
     {
-        if (!f.Bindable)
+        if (!f.Bindable || Refused(f))
             return;
 
         if (f is Command c)

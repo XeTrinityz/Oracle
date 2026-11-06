@@ -70,6 +70,19 @@ with boxes, names, health and tracers. Select what you're aiming at, or pick fro
 grab it and carry it around (and throw it), place it at your crosshair, nudge, turn and resize it, freeze it, switch
 off its collision, or remove it. REMOVE only hides, so missions can't break, and RESTORE puts anything you changed back.
 
+**Spawner, five tabs.** Spawn characters, vehicles, objects and weapons, built the way the game builds its own from
+whatever it has loaded around you. CHARACTERS lists everyone the area can build (militia, gang thugs, police, fire
+crews, civilians...) by group, with side (hostile, passive, on your side or BODYGUARD), behaviour (fight, stand, follow
+you, wander, frozen), weapon, health and size. Bodyguards follow you everywhere and protect you: they go after whoever
+threatens you most with fists, blades or guns (aimed, with line of sight, moving until they have a shot), hits land with
+impact sounds, enemies fight them back, and each wears its own marker with a health bar and an off-screen arrow. VEHICLES spawns militia tanks, heavy tanks, drones, cars and vans, hostile or
+hacked to your side, attacking, guarding, parked or driving off. OBJECTS makes physics or fixed props from any mesh
+nearby or in memory, or copies whatever piece of the world is under your crosshair. WEAPONS lays guns, blades,
+shields and crates on the ground for thugs to pick up, or hands one to a character. Every tab sets how many, where
+(in front or at the crosshair), spacing and facing; SPAWN COPY OF SELECTED duplicates the world editor's selection.
+SPAWNED lists your spawns, hands one to the world editor, and deletes them, and can clear fallen or far-off spawns by
+itself. Nothing the game placed is ever deleted.
+
 **Camera, five tabs.** FREE CAMERA flies the view anywhere (Batman holds still, or the whole world freezes), with
 smooth moves, tilt and zoom, and puts Batman down under the camera when you're done. TRIPOD leaves the camera on the
 spot and gives you Batman back, turning to follow him. FIRST PERSON on foot, camera tilt, camera through walls,

@@ -369,6 +369,13 @@ internal static class Radial
     {
         if (!f.Bindable)
             return;
+        if (Catalog.Refused(f))
+        {
+            Flashed = flat;
+            FlashedAt = Gfx.Time;
+            FlashOk = false;
+            return;
+        }
 
         Flashed = flat;
         FlashedAt = Gfx.Time;

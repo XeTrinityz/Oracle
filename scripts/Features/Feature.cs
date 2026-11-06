@@ -45,6 +45,28 @@ internal abstract class Feature
 
     public bool Active => !IsPref && !IsSetting && !IsDefault;
 
+    /// <summary>Says why the row can't be used right now (a short phrase, shown on the row), or null when it can.</summary>
+    public Func<string?>? DisabledWhy;
+
+    /// <summary>
+    /// Why the row is unavailable, or null. A disabled row is drawn dimmed with this in place of its control, and the
+    /// menu, its hotkey and the radial all refuse it. Its value is kept, so it comes back as it was.
+    /// </summary>
+    public string? Disabled
+    {
+        get
+        {
+            try
+            {
+                return DisabledWhy?.Invoke();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
     public abstract void Apply();
 
     public abstract void ResetValue();
@@ -254,6 +276,13 @@ internal static class FeatureSetup
     public static T Unsaved<T>(this T f) where T : Feature
     {
         f.NotSaved = true;
+        return f;
+    }
+
+    /// <summary>Greys the row out while <paramref name="why"/> returns a reason; see <see cref="Feature.Disabled"/>.</summary>
+    public static T DisabledWhen<T>(this T f, Func<string?> why) where T : Feature
+    {
+        f.DisabledWhy = why;
         return f;
     }
 

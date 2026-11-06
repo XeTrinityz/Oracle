@@ -179,6 +179,37 @@ internal static class Layout
             new("SHOW", "esp_enemies", "esp_friendlies", "esp_vehicles", "esp_turrets", "esp_props", "esp_movers", "esp_pickups"),
             new("STYLE", "esp_boxes", "esp_tracers", "esp_details", "esp_range", "esp_max"),
         }),
+        ("SPAWNER/CHARACTERS", new Section[]
+        {
+            new("WHO", "chr_group", "chr_who", "chr_spawn", "spawn_copy", "chr_refresh"),
+            new("HOW", "chr_side", "chr_behaviour", "chr_weapon", "chr_health", "chr_size"),
+            new("BODYGUARDS", "npc_guard_range", "npc_guard_gap", "npc_guard_keep_up", "npc_guard_hunted", "guard_markers"),
+            new("PLACE", "spawn_where", "spawn_distance", "spawn_count", "spawn_spread", "spawn_facing"),
+        }),
+        ("SPAWNER/VEHICLES", new Section[]
+        {
+            new("WHICH", "veh_group", "veh_who", "veh_spawn", "+spawn_copy", "veh_refresh"),
+            new("HOW", "veh_side", "veh_behaviour", "veh_health"),
+            new("PLACE", "+spawn_where", "+spawn_distance", "+spawn_count", "+spawn_spread", "+spawn_facing"),
+        }),
+        ("SPAWNER/OBJECTS", new Section[]
+        {
+            new("WHICH", "obj_source", "obj_filter", "obj_who", "obj_spawn", "obj_copy_aimed", "+spawn_copy", "obj_refresh"),
+            new("HOW", "obj_physics", "obj_collision", "obj_size"),
+            new("PLACE", "+spawn_where", "+spawn_distance", "+spawn_count", "+spawn_spread", "+spawn_facing"),
+        }),
+        ("SPAWNER/WEAPONS", new Section[]
+        {
+            new("WHICH", "wpn_who", "wpn_spawn", "wpn_give", "wpn_refresh"),
+            new("PLACE", "+spawn_where", "+spawn_distance", "+spawn_count", "+spawn_spread", "+spawn_facing"),
+        }),
+        ("SPAWNER/SPAWNED", new Section[]
+        {
+            new("YOUR SPAWNS", "spawned_pick", "spawned_edit", "spawned_go", "spawned_delete"),
+            new("CLEAN UP", "spawned_delete_last", "spawned_delete_all"),
+            new("AUTOMATIC", "spawn_clear_fallen", "spawn_clear_after", "spawn_clear_far"),
+            new("OPTIONS", "spawn_select_new", "spawn_max"),
+        }),
         ("CAMERA/GENERAL", new Section[]
         {
             new("PRESETS", "fov_preset", "cam_reset"),

@@ -13,7 +13,7 @@ namespace CeZeY.Oracle;
 /// The player is never included. Each side has its own CONTROL and MOVE rows, so both can run at once and a hotkey
 /// always means the same people.
 /// </summary>
-internal sealed class Npcs : Module
+internal sealed partial class Npcs : Module
 {
     public static readonly Npcs I = new();
 
@@ -69,6 +69,7 @@ internal sealed class Npcs : Module
     private const int WithYou = 1;
     private const int GangA = 2;
     private const int GangB = 3;
+    private const int Hunters = 4; // enemies going after your bodyguards (Npcs.Guards.cs)
     private const int Loner = 100; // FREE FOR ALL: every pawn gets a team of its own from here up.
     private const float MeleeStandoff = 140f;
     private const float GunStandoff = 700f;
@@ -91,6 +92,33 @@ internal sealed class Npcs : Module
         public nint ShotAt;
         public double AimedSince;
         public double NextBurst;
+
+        // ---- the bodyguard brain and gun handling (Npcs.Guards.cs)
+        public RPawnVillain? Pawn;
+        public bool Guard;
+        public int SeenTick;
+        public float TargetScore;
+        public double NextThink;
+        public double NextMove;
+        public double NextSight;
+        public double NextStance;
+        public double NextCatchUp;
+        public bool Sight;
+        public bool Raised;
+        public float LastGap = float.MaxValue;
+        public double GapSince;
+        public double NextMakeFollow;
+        public double NextSwing;
+        public nint FacingAt;
+        public nint LandedMove;
+        public double LandedAt;
+        public nint SeenHealthOf;
+        public int SeenHealth;
+        public nint ComboMove;
+        public int ComboHits;
+        public bool Fought;
+        public double FoughtAt;
+        public double SeenAt;
     }
     private int _nextGang;
     private Toggle _gangWar = null!;
@@ -161,6 +189,7 @@ internal sealed class Npcs : Module
             on => { if (on) EndMode(_gangWar); else ReleaseTeam(t => t >= Loner); });
         AddCommand("npc_release_turncoats", "RELEASE TURNCOATS", "Every enemy you turned goes back to fighting you.", ReleaseTurncoats);
         _hitsToKo = AddSlider("npc_turncoat_hits", "TURNCOAT HITS TO KO", "How many hits from a turncoat or gang member it takes to knock another enemy out, when the game's own punch doesn't.", 4f, 1f, 10f, 1f, 2f, Fmt.Count).Pref();
+        BuildGuards();
 
         // ---- enemy weapons
         _weapon = AddChoice("npc_weapon_kind", "WEAPON TO GIVE", "The weapon ARM ENEMIES and ARM TURNCOATS hand out. EXPERIMENTAL: a weapon this part of the game never uses may not have its model loaded.",
@@ -912,9 +941,15 @@ internal sealed class Npcs : Module
         Turn(v);
     }
 
-    /// <summary>One enemy switches sides, as TURN NEAREST ENEMY does. The world editor's TURN uses it on its selection.</summary>
-    internal void Turn(RPawnVillain v)
+    /// <summary>
+    /// One enemy switches sides, as TURN NEAREST ENEMY does. The world editor's TURN uses it on its selection. A
+    /// <paramref name="bodyguard"/> (the spawner's BODYGUARD side) also follows you and protects you (Npcs.Guards.cs).
+    /// </summary>
+    internal void Turn(RPawnVillain v, bool bodyguard = false)
     {
+        // An entry left by someone deleted at this address (the game reuses them) isn't him.
+        if (_team.TryGetValue(v.Ptr, out Loyal? stale) && !ReferenceEquals(stale.Pawn, v))
+            _team.Remove(v.Ptr);
         if (TeamOf(v) == WithYou)
             throw new InvalidOperationException("already on your side");
         if (!Standing(v))
@@ -922,7 +957,7 @@ internal sealed class Npcs : Module
 
         if (_pacified.Remove(v.Ptr) && !v.IsHostile())
             v.SetHostile(true, FName.None);
-        _team[v.Ptr] = new Loyal { Team = WithYou };
+        _team[v.Ptr] = new Loyal { Team = WithYou, Pawn = v, Guard = bodyguard };
         _allegiance.Force();
 
         bool anyone = Near().OfType<RPawnVillain>().Any(q => q.Ptr != v.Ptr && q.IsValid && CanFight(WithYou, q));
@@ -946,28 +981,35 @@ internal sealed class Npcs : Module
 
         foreach (RPawnVillain v in World.All<RPawnVillain>())
         {
-            if (!_team.TryGetValue(v.Ptr, out Loyal? l) || !which(l.Team))
-                continue;
-
-            _team.Remove(v.Ptr);
-            if (v.bDeleteMe)
-                continue;
-
-            if (v.OverrideTargetPawn is { IsValid: true })
-                v.OverrideTargetPawn = null!;
-            StopShooting(v, l);
-            if (v.DamageTarget is RPawnVillain)
-                v.SetDamageTarget(null!);
-            if (l.SelfManaged)
-                v.bSelfManageTargetSelection = false;
-            if (l.Marked && v.CannotBeTargettedByPlayer is { IsValid: true })
-                v.CannotBeTargettedByPlayer = null!;
-            if (!v.IsHostile())
-                v.SetHostile(true, FName.None);
+            if (_team.TryGetValue(v.Ptr, out Loyal? l) && which(l.Team))
+                ReleaseOne(v, l);
         }
 
         foreach (nint gone in _team.Where(kv => which(kv.Value.Team)).Select(kv => kv.Key).ToArray())
             _team.Remove(gone);
+    }
+
+    /// <summary>Hands one pawn back to the game, as <see cref="ReleaseTeam"/> does for a whole side.</summary>
+    private void ReleaseOne(RPawnVillain v, Loyal l)
+    {
+        _team.Remove(v.Ptr);
+        if (v.bDeleteMe)
+            return;
+
+        if (v.OverrideTargetPawn is { IsValid: true })
+            v.OverrideTargetPawn = null!;
+        StopShooting(v, l);
+        if (v.DamageTarget is RPawnVillain)
+            v.SetDamageTarget(null!);
+        Safe.Run("release follow", () => StopFollowing(v));
+        if (v.AIController is { IsValid: true } releasedAi)
+            Safe.Run("release stand-in", () => DropStandIn(releasedAi));
+        if (l.SelfManaged)
+            v.bSelfManageTargetSelection = false;
+        if (l.Marked && v.CannotBeTargettedByPlayer is { IsValid: true })
+            v.CannotBeTargettedByPlayer = null!;
+        if (!v.IsHostile())
+            v.SetHostile(true, FName.None);
     }
 
     /// <summary>
@@ -989,7 +1031,7 @@ internal sealed class Npcs : Module
             foreach (Pawn p in near)
             {
                 if (p is RPawnVillain v && v.IsValid && Standing(v) && !_team.ContainsKey(v.Ptr) && !_pacified.Contains(v.Ptr) && v.IsHostile())
-                    _team[v.Ptr] = new Loyal { Team = _nextGang++ % 2 == 0 ? GangA : GangB };
+                    _team[v.Ptr] = new Loyal { Team = _nextGang++ % 2 == 0 ? GangA : GangB, Pawn = v };
             }
         }
 
@@ -998,15 +1040,65 @@ internal sealed class Npcs : Module
             foreach (Pawn p in near)
             {
                 if (p is RPawnVillain v && v.IsValid && Standing(v) && !_team.ContainsKey(v.Ptr) && !_pacified.Contains(v.Ptr) && v.IsHostile())
-                    _team[v.Ptr] = new Loyal { Team = _nextLoner++ };
+                    _team[v.Ptr] = new Loyal { Team = _nextLoner++, Pawn = v };
             }
         }
 
+        if (_huntGuards.On && _hunt.Elapsed(HuntSeconds))
+            Safe.Run("bodyguard hunters", () => RecruitHunters(near));
+
+        _steerTick++;
         foreach (Pawn p in near)
         {
-            if (p is RPawnVillain v && v.IsValid && !v.bDeleteMe && Standing(v) && _team.TryGetValue(v.Ptr, out Loyal? l))
-                Steer(v, l, near, choose);
+            if (p is RPawnVillain v && v.IsValid && !v.bDeleteMe && _team.TryGetValue(v.Ptr, out Loyal? l))
+            {
+                if (l.Pawn != null && !ReferenceEquals(l.Pawn, v))
+                {
+                    _team.Remove(v.Ptr);
+                    continue;
+                }
+
+                l.SeenTick = _steerTick;
+
+                // Knocked out, or knocked over (run over, ragdolled): his gun is stopped, or the game's gun tick kept
+                // firing it at his last man from the floor, with the gun already dropped.
+                if (!Standing(v) || v.IsIncapacitated())
+                {
+                    StopShooting(v, l);
+                    continue;
+                }
+
+                if (l.Team == WithYou && l.Guard)
+                    Guard(v, l, near, choose);
+                else
+                    Steer(v, l, near, choose);
+                WatchHits(v, l);
+            }
         }
+
+        if (_prune.Elapsed(PruneSeconds))
+            PruneTeam();
+
+        // Bodyguards left far behind (you drove or glided off) are out of the scan; they still catch up.
+        Safe.Run("bodyguard catch-up", StragglersCatchUp);
+    }
+
+    private int _steerTick;
+    private Every _prune;
+    private const double PruneSeconds = 2.0;
+
+    /// <summary>Drops entries for pawns that no longer exist, so a new pawn at a reused address isn't mistaken for one.</summary>
+    private void PruneTeam()
+    {
+        foreach (nint gone in _team.Where(kv => kv.Value.Pawn is { } p && !p.IsValid).Select(kv => kv.Key).ToArray())
+            _team.Remove(gone);
+    }
+
+    /// <summary>Forgets a pawn that's about to be deleted (a spawn), without touching it.</summary>
+    internal void Forget(nint ptr)
+    {
+        _team.Remove(ptr);
+        _pacified.Remove(ptr);
     }
 
     /// <summary>
@@ -1055,6 +1147,14 @@ internal sealed class Npcs : Module
             l.Target = target?.Ptr ?? 0;
         }
 
+        // A hunter goes back to fighting you once his bodyguard is down or gone, or once you're the nearer of the two.
+        if (l.Team == Hunters && (target == null || World.Pawn is { } me
+            && Vector3.Distance(v.Location, me.Location) < Vector3.Distance(v.Location, target.Location) - HuntRelease))
+        {
+            ReleaseOne(v, l);
+            return;
+        }
+
         if (target == null)
         {
             // Nobody left on the other side: stand down rather than go back to fighting you.
@@ -1093,7 +1193,7 @@ internal sealed class Npcs : Module
             v.OverrideTargetPawn = target;
 
         if (v.CurrentGun is { IsValid: true })
-            Shoot(v, l, target);
+            Shoot(v, l, target, null, Clock.Now);
         else
             StopShooting(v, l);
     }
@@ -1108,6 +1208,80 @@ internal sealed class Npcs : Module
     {
         self.CombatAnimHit();
         Landed(self, RDmgType_Strike.StaticClass);
+    }
+
+    // A punch's hit can come through ForceHitTarget (the move pushing its hit onto the target a couple of frames after
+    // the anim notify) rather than CombatAnimHit. The game's own damage may land there; the sound and spark don't.
+    [Redirect(typeof(RCombatMove_VillainCloseAttack), nameof(RCombatMove_VillainCloseAttack.ForceHitTarget))]
+    private static void ForceHitRedirect(RCombatMove_VillainCloseAttack self)
+    {
+        if (I._team.Count == 0)
+        {
+            self.ForceHitTarget();
+            return;
+        }
+
+        // ForceHitTarget only strikes once the fist's damage proxy has a position; otherwise it waits a frame.
+        int before = -1;
+        bool strikes = false;
+        try
+        {
+            strikes = self.bForceHitTarget && self.Target is { IsValid: true } && self.Villain?.DamageProxy is { IsValid: true } proxy && proxy.LocationHistory.Count >= 1;
+            before = strikes ? self.Target!.Health : -1;
+        }
+        catch (Exception ex)
+        {
+            Log.Throttled("turncoat force hit", "turncoat force hit check failed: " + ex.Message);
+        }
+
+        self.ForceHitTarget();
+        if (strikes)
+            Safe.Run("turncoat hit", () => I.Land(self, RDmgType_Strike.StaticClass, before));
+    }
+
+    // The plain knife slash and the shield bash open each strike with CombatAnimHit_Left / _Right, called by the
+    // animation directly, so they never reached the CombatAnimHit redirects: a strike only landed if the weapon's
+    // collision touched the man. A strike within reach now lands, and its damage collision is switched off so the
+    // game's own hit can't land it again. (Knife thugs themselves use the knife combo: see ComboHits.)
+    [Redirect(typeof(RCombatMove_VillainKnifeAttack), nameof(RCombatMove_VillainKnifeAttack.CombatAnimHit_Left))]
+    private static void KnifeLeftRedirect(RCombatMove_VillainKnifeAttack self)
+    {
+        self.CombatAnimHit_Left();
+        Slashed(self, RDmgType_Knife.StaticClass);
+    }
+
+    [Redirect(typeof(RCombatMove_VillainKnifeAttack), nameof(RCombatMove_VillainKnifeAttack.CombatAnimHit_Right))]
+    private static void KnifeRightRedirect(RCombatMove_VillainKnifeAttack self)
+    {
+        self.CombatAnimHit_Right();
+        Slashed(self, RDmgType_Knife.StaticClass);
+    }
+
+    [Redirect(typeof(RCombatMove_VillainShieldAttack), nameof(RCombatMove_VillainShieldAttack.CombatAnimHit_Left))]
+    private static void ShieldLeftRedirect(RCombatMove_VillainShieldAttack self)
+    {
+        self.CombatAnimHit_Left();
+        Slashed(self, RDmgType_ShieldBash.StaticClass);
+    }
+
+    [Redirect(typeof(RCombatMove_VillainShieldAttack), nameof(RCombatMove_VillainShieldAttack.CombatAnimHit_Right))]
+    private static void ShieldRightRedirect(RCombatMove_VillainShieldAttack self)
+    {
+        self.CombatAnimHit_Right();
+        Slashed(self, RDmgType_ShieldBash.StaticClass);
+    }
+
+    /// <summary>Runs on every knife and shield slash in the game, so it bails at once unless someone is turned.</summary>
+    private static void Slashed(RCombatMove_VillainAttack move, Func<Class> damageType)
+    {
+        if (I._team.Count == 0)
+            return;
+
+        Safe.Run("turncoat slash", () =>
+        {
+            if (I.Land(move, damageType) && move.Villain?.DamageProxy is { IsValid: true } proxy)
+                proxy.Deactivate();
+        });
     }
 
     [Redirect(typeof(RCombatMove_VillainPipeAttack), nameof(RCombatMove_VillainPipeAttack.CombatAnimHit))]
@@ -1151,16 +1325,32 @@ internal sealed class Npcs : Module
     /// A punch goes through the game's own DamagePawn first, so it gets the real hit reaction and damage. Weapon
     /// swings, and punches DamagePawn doesn't hurt, deal TakeDamage sized by TURNCOAT HITS TO KO.
     /// </summary>
-    private void Land(RCombatMove_VillainAttack move, Func<Class> damageType)
+    /// <param name="healthBefore">The man's health before the game's own hit, when it may already have landed; -1 when not.</param>
+    /// <returns>True when a hit landed (Oracle's, or the game's with its effects added).</returns>
+    private bool Land(RCombatMove_VillainAttack move, Func<Class> damageType, int healthBefore = -1, bool counted = false)
     {
         RPawnVillain v = move.Villain;
         if (v is not { IsValid: true } || !_team.TryGetValue(v.Ptr, out Loyal? l) || l.Target == 0)
-            return;
+            return false;
 
         if (v.OverrideTargetPawn is not RPawnVillain t || t.Ptr != l.Target || !t.IsValid || !Standing(t))
-            return;
+            return false;
         if (Vector3.DistanceSquared(t.Location, v.Location) > MeleeReach * MeleeReach)
-            return;
+            return false;
+
+        // One hit per strike, however many ways the move reports it. A knife's left and right slashes are separate.
+        double now = Clock.Now;
+        if (!counted && l.LandedMove == move.Ptr && now - l.LandedAt < 0.25)
+            return false;
+        l.LandedMove = move.Ptr;
+        l.LandedAt = now;
+
+        // The game's hit already hurt him: only the sound and spark are missing.
+        if (healthBefore >= 0 && t.Health < healthBefore)
+        {
+            Safe.Run("turncoat hit fx", () => HitFx(v, t, move));
+            return true;
+        }
 
         int before = t.Health;
         if (move is RCombatMove_VillainCloseAttack close)
@@ -1173,69 +1363,9 @@ internal sealed class Npcs : Module
             Vector3 push = Vector3.Normalize(t.Location - v.Location) * 400f;
             t.TakeDamage(amount, v.Controller, t.Location, push, damageType(), default, v);
         }
-    }
 
-    // ---- turncoat guns
-
-    private const double AimSeconds = 0.6;
-    private const double BurstGapMin = 1.2;
-    private const double BurstGapMax = 2.4;
-    private const float ChestHeight = 40f;
-
-    /// <summary>
-    /// A gunman's combat behaviour only ever opens fire on Batman, so a turned one held his gun and did nothing. This is
-    /// the game's own RBMAIAction_ShootActor recipe, run every tick: aim at the target (RPawnCharacter.AimAt, which
-    /// ActionAimAt wraps), SetTrackTarget and SetDamageTarget so GunTick_Shooting aims and damages him, then
-    /// AdjustGunToHitTarget and, after a moment to raise the gun, WeaponFire in bursts.
-    /// </summary>
-    private void Shoot(RPawnVillain v, Loyal l, RPawnVillain target)
-    {
-        double now = Clock.Now;
-        if (l.ShotAt != target.Ptr)
-        {
-            l.ShotAt = target.Ptr;
-            l.AimedSince = now;
-            l.NextBurst = now + AimSeconds;
-        }
-
-        Vector3 chest = target.Location + new Vector3(0f, 0f, ChestHeight);
-        v.AimAt(chest, FName.None, RAnimUtil_PosePlayer.EAllowTurningToAim.ALLOWTURNINGTOAIM_Yes, 1f, default);
-        if (v.TrackTarget?.Ptr != target.Ptr)
-            v.SetTrackTarget(target);
-        if (v.DamageTarget?.Ptr != target.Ptr)
-            v.SetDamageTarget(target);
-        v.AdjustGunToHitTarget(target);
-        l.Shooting = true;
-
-        if (!v.bFiring && now >= l.NextBurst)
-        {
-            v.bFireOnceOnly = false;
-            v.WeaponFire(true, false);
-            v.bStopAfterBurst = true;
-            l.NextBurst = now + BurstGapMin + Random.Shared.NextDouble() * (BurstGapMax - BurstGapMin);
-
-            // WeaponFire refuses an empty clip (it calls NotifyGunEmpty instead); about half the gunmen in testing
-            // never fired. The game's own magic reload refills it, then they try again shortly.
-            if (!v.bFiring)
-            {
-                v.ReloadGun(true);
-                l.NextBurst = now + 0.3;
-            }
-        }
-    }
-
-    private static void StopShooting(RPawnVillain v, Loyal l)
-    {
-        if (!l.Shooting)
-            return;
-
-        l.Shooting = false;
-        l.ShotAt = 0;
-        if (v.bFiring)
-            v.WeaponStop();
-        v.StopAimAt();
-        if (v.TrackTarget is RPawnVillain)
-            v.SetTrackTarget(null!);
+        Safe.Run("turncoat hit fx", () => HitFx(v, t, move));
+        return true;
     }
 
     // ---- weapons
@@ -1357,6 +1487,7 @@ internal sealed class Npcs : Module
         WithYou => theirs != WithYou,
         GangA => theirs is GangB or WithYou,
         GangB => theirs is GangA or WithYou,
+        Hunters => theirs == WithYou,
         _ => false,
     };
 

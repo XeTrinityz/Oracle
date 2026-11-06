@@ -36,7 +36,8 @@ internal static class EditorView
         int marked = 0;
         foreach (Thing t in ed.Visible)
         {
-            if (t == sel || !ed.Shows(t.Kind) || !t.Alive)
+            // Spawned bodyguards wear the spawner's own marker instead.
+            if (t == sel || !ed.Shows(t.Kind) || !t.Alive || Spawner.I.IsBodyguard(t.Ptr))
                 continue;
             if (++marked > ed.MostShown)
                 break;
