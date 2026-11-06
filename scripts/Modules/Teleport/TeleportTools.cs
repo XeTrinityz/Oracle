@@ -89,7 +89,7 @@ internal sealed class TeleportTools : Module
         AddCommand("teleport_bring_batmobile", "BRING BATMOBILE HERE", "Puts the Batmobile right in front of you, including places it could never drive to.", BringBatmobile);
         AddCommand("teleport_trophy", "TELEPORT TO NEAREST TROPHY", "Goes to the closest uncollected Riddler trophy in the part of the city that is loaded. Some still need their puzzle solved.", ToTrophy).Moves();
 
-        _coords = AddToggle("teleport_coords", "SHOW COORDINATES", "Shows your position, district and heading on screen.").Pref();
+        _coords = AddToggle("teleport_coords", "SHOW COORDINATES", "Shows your position, district and heading on screen.");
         AddCommand("teleport_log_position", "LOG POSITION", "Writes your exact position to Oracle.log.", LogPosition);
     }
 

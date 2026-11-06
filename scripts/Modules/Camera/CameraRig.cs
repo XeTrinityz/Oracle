@@ -180,7 +180,7 @@ internal sealed partial class CameraRig : Module
         _carKick = AddSlider("car_kick", "SPEED FOV KICK", "How much the view widens at high speed and when boosting.", 1f, 0f, 3f, 0.25f, 2f, Fmt.Percent);
         _carDist = AddSlider("car_distance", "BATMOBILE CAMERA DISTANCE", "How far behind the Batmobile the camera sits, in car and battle mode.", 1f, 0.5f, 2.5f, 0.1f, 1.4f, Fmt.Times);
         _carView = AddChoice("car_view", "BATMOBILE VIEW", "Which of the game's driving cameras to start in each time you get in: its two chase cameras or the low bonnet camera. GAME leaves the game's choice. The game's own key (C, or RB on a pad) still cycles them, and the game leaves the bonnet camera in deep water.",
-            new[] { "game", "chase1", "chase2", "bonnet" }, new[] { "GAME", "CHASE 1", "CHASE 2", "BONNET" }, _ => RestartCarView()).Pref();
+            new[] { "game", "chase1", "chase2", "bonnet" }, new[] { "GAME", "CHASE 1", "CHASE 2", "BONNET" }, _ => RestartCarView());
         AddCommand("car_view_next", "NEXT BATMOBILE VIEW", "Cycles the driving camera, like the game's own key. Only works while driving.", NextCarView);
 
         _preset = AddChoice("fov_preset", "CAMERA PRESET", "Sets every camera slider at once. Tweak them afterwards as you like. VANILLA puts everything back to the game's camera.",

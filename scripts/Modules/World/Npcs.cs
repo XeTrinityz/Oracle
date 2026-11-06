@@ -218,7 +218,7 @@ internal sealed partial class Npcs : Module
         AddCommand("npc_clear_thugs", "CLEAR STREET THUGS", "Sends the thugs roaming the streets away. Mission and story enemies stay.", ClearStreetThugs);
 
         // ---- info
-        _counter = AddToggle("npc_count", "SHOW NPC COUNT", "Shows how many enemies are standing or down, and how many friendlies, within 90 m.").Pref();
+        _counter = AddToggle("npc_count", "SHOW NPC COUNT", "Shows how many enemies are standing or down, and how many friendlies, within 90 m.");
     }
 
     private void BuildSide(Side s, string freeze, string size, string healthy, string disarm, string revive, string teleport, string pull, string launch, string freezeHelp)

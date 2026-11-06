@@ -54,7 +54,7 @@ internal sealed partial class Population : Module
         AddCommand("city_batmobile_mob", "THUG MOB ON BATMOBILE", "A gang of thugs comes out of the streets around the Batmobile and goes for it, as they do when you leave it parked. Use the Batmobile's thug zapper or fight them off.", MobBatmobile);
         AddCommand("city_getaway_car", "SPAWN GETAWAY CAR", "Starts a car chase near you on the roads: police after a fleeing car if the district has one, else a thug car. Chase it down.", SpawnGetaway);
 
-        _readout = AddToggle("city_threats", "SHOW DISTRICT THREATS", "Shows which island you're on and how many watchtowers, checkpoints, drones and tanks the militia still has there.").Pref();
+        _readout = AddToggle("city_threats", "SHOW DISTRICT THREATS", "Shows which island you're on and how many watchtowers, checkpoints, drones and tanks the militia still has there.");
         BuildEsp();
     }
 

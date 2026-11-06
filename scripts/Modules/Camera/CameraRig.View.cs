@@ -87,8 +87,8 @@ internal sealed partial class CameraRig
             12f, -10f, 40f, 2f, 24f, Fmt.Count).Pref();
         _hideHud = AddToggle("cam_hide_hud", "HIDE GAME HUD", "Hides the game's HUD: health, minimap, prompts, markers and objectives. Oracle's menu and notices still show.");
         _bars = AddChoice("cam_bars", "CINEMATIC BARS", "Black bars across the top and bottom for a widescreen film look. Pick the shape of the picture.",
-            Bars.Select(b => b.Key).ToArray(), Bars.Select(b => b.Label).ToArray()).Pref();
-        _readout = AddToggle("fov_readout", "FOV READOUT", "Shows the live field of view (on screen and the game's own), the camera mode and state, and the camera distance in the bottom left corner.").Pref();
+            Bars.Select(b => b.Key).ToArray(), Bars.Select(b => b.Label).ToArray());
+        _readout = AddToggle("fov_readout", "FOV READOUT", "Shows the live field of view (on screen and the game's own), the camera mode and state, and the camera distance in the bottom left corner.");
     }
 
     public override void Frame() => Safe.Run("hide hud", HudTick);

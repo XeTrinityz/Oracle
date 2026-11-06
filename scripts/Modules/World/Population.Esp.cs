@@ -51,7 +51,7 @@ internal sealed partial class Population
     private void BuildEsp()
     {
         _esp = AddToggle("city_threat_esp", "THREAT ESP", "A marker over each militia threat loaded around you: watchtowers, checkpoints, beacons, air drones, drone tanks, heavy tanks, humvees and APCs, with its distance and, for vehicles, its health. Far-off ones appear as the city streams them in. Grey ones are parked or asleep and won't fight until the game wakes them.",
-            on => { if (!on) ForgetEsp(); }).Pref();
+            on => { if (!on) ForgetEsp(); });
         _espRange = AddSlider("city_threat_esp_range", "THREAT ESP RANGE", "How far away THREAT ESP marks things.", 400f, 50f, 1500f, 50f, 400f, Fmt.Metres).Pref();
     }
 
