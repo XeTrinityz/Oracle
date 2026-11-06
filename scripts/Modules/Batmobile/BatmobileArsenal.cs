@@ -1,3 +1,4 @@
+using BmSDK;
 using BmSDK.BmGame;
 using BmSDK.Engine;
 using static CeZeY.Oracle.Catalog;
@@ -9,7 +10,13 @@ internal sealed partial class Batmobile
 {
     private const float MaxMissileTargets = 40f;
 
-    private readonly Held<RBatmobileMissileLauncher, int> _missileCap = new("missile targets", m => m.MaxTargets, (m, v) => m.MaxTargets = v);
+    // The barrage's real cap is MaxTargetsPerLevel, one entry per weapon-power level: TargetNewMissile stops locking at
+    // MaxTargetsPerLevel[power level], and Firing picks the first level that covers the locks and fires exactly that
+    // many missiles (with too many locks it falls back to level 0's count). MaxTargets only caps the held-trigger
+    // Primed path and how many missile pods show while holstered; the game leaves it at 0, so it is left alone.
+    private static readonly FName FiringState = new("Firing");
+    private RBatmobileMissileLauncher? _levelsOn;
+    private int[] _levelsOriginal = [];
 
     private Slider _missileTargets = null!;
 
@@ -33,8 +40,8 @@ internal sealed partial class Batmobile
         // RemoveBatmobileWeapon clears the weapon's unlock flag in the save, so this can't be undone from here and is a command, not a toggle.
         AddCommand("batmobile_all_weapons", "ARM EVERY WEAPON", "Fits the Batmobile with every weapon it has, unlocked or not. Nothing is written to your save: they stay until the Batmobile is next rebuilt, by a reload or a skin change.", ArmEverything);
 
-        _missileTargets = AddSlider("batmobile_missile_targets", "MISSILE BARRAGE TARGETS", "How many targets the missile barrage can lock on to at once. GAME keeps your upgrade's own number.",
-            0f, 0f, MaxMissileTargets, 1f, 20f, v => v <= 0f ? "GAME" : Fmt.Count(v), v => { if (v <= 0f) _missileCap.Restore(); }).EveryTick(MissileTick);
+        _missileTargets = AddSlider("batmobile_missile_targets", "MISSILE BARRAGE TARGETS", "How many targets a full-power missile barrage can lock on to. Each lock gets a rocket, and a part-charged barrage keeps the game's own size. GAME keeps your upgrade's own number.",
+            0f, 0f, MaxMissileTargets, 1f, 20f, v => v <= 0f ? "GAME" : Fmt.Count(v), v => { if (v <= 0f) RestoreMissileCap(); }).EveryTick(MissileTick);
 
         AddToggle("pursuit_instant_lock", "INSTANT MISSILE LOCK", "The pursuit missile locks on to cars, APCs and anything else it can target the moment they are in your sights.",
             on => { if (!on) { _lockFor.Restore(); _civilianLockFor.Restore(); } }).EveryTick(LockTick);
@@ -82,10 +89,82 @@ internal sealed partial class Batmobile
         {
             if (w is RBatmobileMissileLauncher { IsValid: true } launcher)
             {
-                _missileCap.Set(launcher, (int)_missileTargets.Value);
+                HoldLevels(launcher, (int)_missileTargets.Value);
                 return;
             }
         }
+    }
+
+    /// <summary>The most targets a full-power barrage locks: the top level's cap, Oracle's slider included.</summary>
+    private static int BarrageSize(RBatmobileMissileLauncher launcher)
+    {
+        TArray<int> levels = launcher.MaxTargetsPerLevel;
+        int top = 0;
+        for (int i = 0; i < levels.Count; i++)
+            top = Math.Max(top, levels[i]);
+        return top;
+    }
+
+    /// <summary>
+    /// Lets a full-power barrage lock <paramref name="want"/> targets. Firing launches the whole count of the first
+    /// level that covers the locks, cycling the targets, so scaling every level made one lock fire four rockets.
+    /// Instead the lower levels keep the game's counts (capped at <paramref name="want"/>), and only the top level is
+    /// raised: to <paramref name="want"/> while locking, so locking goes on, then during a volley to the locks taken
+    /// (never below the game's own count), so 20 locks fire 20 rockets, not 40.
+    /// </summary>
+    private void HoldLevels(RBatmobileMissileLauncher launcher, int want)
+    {
+        TArray<int> levels = launcher.MaxTargetsPerLevel;
+        int n = levels.Count;
+        if (_levelsOn is not { IsValid: true } held || held.Ptr != launcher.Ptr || n != _levelsOriginal.Length)
+        {
+            RestoreMissileCap();
+            _levelsOriginal = new int[n];
+            for (int i = 0; i < n; i++)
+                _levelsOriginal[i] = levels[i];
+            _levelsOn = launcher;
+            Log.Info("MISSILE BARRAGE: game levels [" + string.Join(",", _levelsOriginal) + "]");
+        }
+
+        if (n == 0)
+            return;
+
+        int last = n - 1;
+        for (int i = 0; i < last; i++)
+        {
+            int v = Math.Min(_levelsOriginal[i], want);
+            if (levels[i] != v)
+                levels[i] = v;
+        }
+
+        int top = want;
+        if (InState(launcher, FiringState))
+        {
+            // A volley ends when ++NthTarget == levels[CurrentLevel]; never set it at or below a shot already fired,
+            // or that test would never pass and the launcher would keep firing.
+            int locks = launcher.CurrentTargets.Count;
+            top = Math.Max(Math.Min(_levelsOriginal[last], want), Math.Max(locks, launcher.NthTarget + 1));
+        }
+
+        if (levels[last] != top)
+            levels[last] = top;
+    }
+
+    private void RestoreMissileCap()
+    {
+        RBatmobileMissileLauncher? launcher = _levelsOn;
+        int[] original = _levelsOriginal;
+        _levelsOn = null;
+        _levelsOriginal = [];
+        if (launcher is not { IsValid: true })
+            return;
+
+        Safe.Run("missile levels restore", () =>
+        {
+            TArray<int> levels = launcher.MaxTargetsPerLevel;
+            for (int i = 0; i < Math.Min(levels.Count, original.Length); i++)
+                levels[i] = original[i];
+        });
     }
 
     private RBatmobileEMPMissile? PursuitLauncher()

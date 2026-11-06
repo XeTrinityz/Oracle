@@ -89,7 +89,7 @@ internal sealed partial class Batmobile
         if (launcher != null && _foes.Count >= BarrageMin && now - _barrageAt > BarrageGap / rate)
         {
             _barrageAt = now;
-            int size = launcher.MaxTargets > 0 ? launcher.MaxTargets : BarrageDefault;
+            int size = BarrageSize(launcher) is > 0 and int top ? top : BarrageDefault;
             foreach (RVehicleNPC foe in _foes.Take(size))
                 _barrage.Enqueue(foe);
             return;

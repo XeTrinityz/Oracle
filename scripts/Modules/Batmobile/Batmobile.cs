@@ -87,7 +87,7 @@ internal sealed partial class Batmobile : Module
         StopAutopilot(null);
         RestoreBoost();
         RestoreDrive();
-        _missileCap.Restore();
+        RestoreMissileCap();
         RestoreRemoteAndPursuit();
         _radar.Restore();
         _battleForcedCar = 0;
@@ -104,7 +104,7 @@ internal sealed partial class Batmobile : Module
         RestoreBoost();
         RestoreDrive();
         RestoreGrip();
-        _missileCap.Restore();
+        RestoreMissileCap();
         RestoreRemoteAndPursuit();
         _radar.Restore();
     }
