@@ -313,7 +313,51 @@ internal sealed partial class CameraRig
             pov.Rotation = new Rotator(r.Pitch, r.Yaw, r.Roll + _roll);
         }
 
-        return fov || tilt || eyes;
+        bool fit = FitToDisguise(ref pov, player && !free && cat != CatCar, k);
+        return fov || tilt || eyes || fit;
+    }
+
+    // ---- DISGUISE > FIT CAMERA
+    private float _fitWeight, _fitRatio = 1f;
+    private Vector3 _fitShift;
+
+    /// <summary>
+    /// Scales the view about Batman's head onto the worn body's head: the game frames Batman, so a smaller worn
+    /// body gets a camera that is lower and proportionally closer (first person lands in its eyes). The worn
+    /// body's numbers are live every frame; only the blend in and out is eased.
+    /// </summary>
+    private bool FitToDisguise(ref Pov pov, bool allowed, float k)
+    {
+        bool live = false;
+        Vector3 pivot = Vector3.Zero;
+        if (allowed && Disguise.I.CameraFit(out pivot, out Vector3 shift, out float ratio))
+        {
+            live = true;
+            _fitShift = shift;
+            _fitRatio = ratio;
+        }
+
+        if (!allowed)
+            _fitWeight = 0f;
+        else
+            _fitWeight = Settle(_fitWeight, live ? 1f : 0f, k, 0.001f);
+
+        if (_fitWeight <= 0f)
+            return false;
+
+        // Easing out after the look comes off: pivot on where the game puts the pawn's eyes.
+        if (!live)
+        {
+            if (World.Pawn is not { IsValid: true } pawn)
+                return false;
+            pivot = pawn.GetPawnViewLocation();
+            if (!float.IsFinite(pivot.X) || pivot == Vector3.Zero)
+                return false;
+        }
+
+        float r = 1f + (_fitRatio - 1f) * _fitWeight;
+        pov.Location = pivot + _fitShift * _fitWeight + (pov.Location - pivot) * r;
+        return true;
     }
 
     private static float Settle(float value, float target, float k, float snap)

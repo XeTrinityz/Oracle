@@ -62,6 +62,24 @@ internal sealed class Disguise : Module
     private bool _capeWasHidden;
     private bool _oldUpdateSkel;
 
+    // ---- fitting the game's things to the worn body
+    private Toggle _fitCamera = null!, _fitGadgets = null!;
+    private FName _head = FName.None;
+    private readonly Dictionary<nint, Fit> _fits = new();
+
+    /// <summary>
+    /// One thing the game attached to the player's (hidden) mesh, moved onto the worn body. Orig is what the game
+    /// asked for; Last is what Oracle wrote, so a fresh attach by the game (different values) is told apart.
+    /// </summary>
+    private sealed class Fit
+    {
+        public int Bone;
+        public FName Anchor;
+        public Vector3 OrigLoc, LastLoc;
+        public Rotator OrigRot, LastRot;
+        public bool Seen;
+    }
+
     public override void Build()
     {
         _pick = AddChoice("disguise_look", "LOOK",
@@ -79,6 +97,12 @@ internal sealed class Disguise : Module
             Put(Aimed() ?? throw new InvalidOperationException("aim at a character first"));
             _on.On = true;
         });
+        _fitCamera = AddToggle("disguise_fit_camera", "FIT CAMERA",
+            "Moves the camera to suit the worn body: lower and closer for a smaller character, higher and further for a bigger one, and into its eyes in first person. Not in the Batmobile or cutscenes.",
+            on: true).Pref();
+        _fitGadgets = AddToggle("disguise_fit_gadgets", "FIT GADGETS",
+            "Puts what you hold and carry on the worn body: gadgets in its hands and on its belt, the call hologram on its arm, and anything else the game fixes to you. Off, they sit where Batman's own hands would be.",
+            on: true).Pref();
     }
 
     public override void MenuOpening()
@@ -211,11 +235,19 @@ internal sealed class Disguise : Module
         Strip();
         _look = look;
         Dress(player, look);
-        Log.Info("disguise: wearing " + look.Name + " (" + Fmt.Plural(look.Pieces.Count, "piece") + ").");
+        int flapping = _followers.Count(f => f.IsValid && f.FlapsAssetInstance is { IsValid: true });
+        Log.Info("disguise: wearing " + look.Name + " (" + Fmt.Plural(look.Pieces.Count, "piece") + ", " + flapping + " with flaps physics).");
         Overlay.Notice(NoticeTitle, look.Name, true);
     }
 
     /// <summary>Every loaded character recipe with something to wear, by group then name.</summary>
+    /// <summary>
+    /// The "in Batmobile" passenger recipes (MOST WANTED IN BAT MOBILE: Penguin, Pyg, Man-Bat...) all wear a broken
+    /// Joker model when put on (user, 2026-11-06), so they're left out.
+    /// </summary>
+    private static bool InBatmobile(string path) =>
+        path.Replace("_", "", StringComparison.Ordinal).Replace(" ", "", StringComparison.Ordinal).Contains("batmobile", StringComparison.OrdinalIgnoreCase);
+
     private void RefreshLooks()
     {
         if (!World.InGame)
@@ -229,7 +261,7 @@ internal sealed class Disguise : Module
                 continue;
 
             string path = SpawnCatalog.PathOf(d);
-            if (!seen.Add(path))
+            if (InBatmobile(path) || !seen.Add(path))
                 continue;
 
             rows.Add((path, SpawnCatalog.GroupOf(path, false), SpawnCatalog.Pretty(d.Name.ToString() ?? "CHARACTER")));
@@ -926,6 +958,8 @@ internal sealed class Disguise : Module
             }
         }
 
+        if (_body != null)
+            PickHead(own, _body);
         HideOwn(player);
     }
 
@@ -950,6 +984,10 @@ internal sealed class Disguise : Module
         c.SetAllowRFlapsAssetInstance(own.bAllowRFlapsAssetInstance);
         c.bCastDynamicShadow = own.bCastDynamicShadow;
         c.SetLightingChannels(own.LightingChannels);
+        // Characters draw in their own depth group (the player's mesh is SDPG_RockBlimp1, and the game copies the
+        // owner mesh's group onto every prop and gadget it attaches). Left in SDPG_World, cinematic subsurface skin
+        // (Stagg's head and arms) rendered shiny black (in game, 2026-11-06).
+        c.SetDepthPriorityGroup(own.DepthPriorityGroup);
         c.SetOwnerNoSee(own.bOwnerNoSee);
         player.AttachComponent(c);
         return c;
@@ -982,6 +1020,7 @@ internal sealed class Disguise : Module
         Paint(c, p);
         c.bCastDynamicShadow = body.bCastDynamicShadow;
         c.SetLightingChannels(body.LightingChannels);
+        c.SetDepthPriorityGroup(body.DepthPriorityGroup);
         c.SetOwnerNoSee(body.bOwnerNoSee);
         if (p.Socket.Index != FName.None.Index && body.GetSocketByName(p.Socket) is { IsValid: true })
             body.AttachComponentToSocket(c, p.Socket);
@@ -1061,15 +1100,211 @@ internal sealed class Disguise : Module
 
             if (c.bOwnerNoSee != own.bOwnerNoSee)
                 c.SetOwnerNoSee(own.bOwnerNoSee);
+            if (c.DepthPriorityGroup != own.DepthPriorityGroup)
+                c.SetDepthPriorityGroup(own.DepthPriorityGroup);
             if (c.ParentAnimComponent is not { IsValid: true } parent || parent.Ptr != own.Ptr)
                 c.SetParentAnimComponent(own);
         }
 
         foreach (PrimitiveComponent c in _props)
         {
-            if (c.IsValid && c.bOwnerNoSee != own.bOwnerNoSee)
+            if (!c.IsValid)
+                continue;
+
+            if (c.bOwnerNoSee != own.bOwnerNoSee)
                 c.SetOwnerNoSee(own.bOwnerNoSee);
+            if (c.DepthPriorityGroup != own.DepthPriorityGroup)
+                c.SetDepthPriorityGroup(own.DepthPriorityGroup);
         }
+
+        if (_fitGadgets.On && _body is { IsValid: true } body)
+            FitAttachments(own, body);
+        else
+            RestoreFits(own);
+    }
+
+    // ---- fitting gadgets and the like
+
+    private const float FitReach = 300f;
+
+    /// <summary>
+    /// Everything the game attaches to the player's mesh (gadgets in hand or on the belt, the gauntlet's call
+    /// hologram) is placed on Batman's hidden skeleton. This rewrites each attachment's offset every tick so it
+    /// lands where the same offset would put it on the worn body's bone. It stays attached to the player's mesh,
+    /// so the game's own detach and re-attach keep working. A bone the worn skeleton lacks (Batman-only point
+    /// bones) is carried by its nearest ancestor that both share.
+    /// </summary>
+    private void FitAttachments(SkeletalMeshComponent own, SkeletalMeshComponent body)
+    {
+        foreach (Fit f in _fits.Values)
+            f.Seen = false;
+
+        TArray<SkeletalMeshComponent.FAttachment> list = own.Attachments;
+        for (int i = 0; i < list.Count; i++)
+        {
+            SkeletalMeshComponent.FAttachment a = list[i];
+            if (a.Component is not PrimitiveComponent c || !c.IsValid || _worn.Contains(c.Ptr))
+                continue;
+
+            bool known = _fits.TryGetValue(c.Ptr, out Fit? f) && f.Bone == a.BoneName.Index
+                && Near(a.RelativeLocation, f.LastLoc) && Near(a.RelativeRotation, f.LastRot);
+            if (!known || f == null)
+            {
+                // New, or the game attached it again: what it holds now is the game's wish.
+                f = new Fit
+                {
+                    Bone = a.BoneName.Index,
+                    Anchor = AnchorFor(own, body, a.BoneName),
+                    OrigLoc = a.RelativeLocation,
+                    OrigRot = a.RelativeRotation,
+                    LastLoc = a.RelativeLocation,
+                    LastRot = a.RelativeRotation,
+                };
+                _fits[c.Ptr] = f;
+            }
+
+            f.Seen = true;
+            Vector3 loc = f.OrigLoc;
+            Rotator rot = f.OrigRot;
+            if (!c.HiddenGame && f.Anchor.Index != FName.None.Index && Moved(own, body, a.BoneName, f, out Vector3 nl, out Rotator nr))
+                (loc, rot) = (nl, nr);
+
+            if (Near(loc, a.RelativeLocation) && Near(rot, a.RelativeRotation))
+            {
+                (f.LastLoc, f.LastRot) = (a.RelativeLocation, a.RelativeRotation);
+                continue;
+            }
+
+            a.RelativeLocation = loc;
+            a.RelativeRotation = rot;
+            list[i] = a;
+            // Read back, so rotation rounding to the engine's integer units still matches next tick.
+            SkeletalMeshComponent.FAttachment back = list[i];
+            (f.LastLoc, f.LastRot) = (back.RelativeLocation, back.RelativeRotation);
+        }
+
+        if (_fits.Count > 0)
+        {
+            foreach (nint gone in _fits.Where(kv => !kv.Value.Seen).Select(kv => kv.Key).ToList())
+                _fits.Remove(gone);
+        }
+    }
+
+    /// <summary>The game's offset on the player's bone, carried over to the same place on the worn body.</summary>
+    private static bool Moved(SkeletalMeshComponent own, SkeletalMeshComponent body, FName bone, Fit f, out Vector3 loc, out Rotator rot)
+    {
+        // Where the game wants it in the world, on Batman's skeleton.
+        own.TransformFromBoneSpace(bone, f.OrigLoc, f.OrigRot, out Vector3 p0, out Rotator r0);
+        // Relative to the anchor bone both skeletons have, then put on the worn body's anchor.
+        own.TransformToBoneSpace(f.Anchor, p0, r0, out Vector3 la, out Rotator ra);
+        body.TransformFromBoneSpace(f.Anchor, la, ra, out Vector3 p1, out Rotator r1);
+        // Back into the player's bone space, which is what the attachment stores.
+        own.TransformToBoneSpace(bone, p1, r1, out loc, out rot);
+
+        return Finite(loc) && Finite(p0) && Finite(p1) && Vector3.Distance(p0, p1) < FitReach;
+    }
+
+    private static FName AnchorFor(SkeletalMeshComponent own, SkeletalMeshComponent body, FName bone)
+    {
+        FName b = bone;
+        for (int step = 0; step < 64 && b.Index != FName.None.Index; step++)
+        {
+            if (body.MatchRefBone(b) >= 0)
+                return b;
+            b = own.GetParentBone(b);
+        }
+
+        return FName.None;
+    }
+
+    /// <summary>Puts back every offset Oracle changed and the game hasn't replaced since.</summary>
+    private void RestoreFits(SkeletalMeshComponent own)
+    {
+        if (_fits.Count == 0)
+            return;
+
+        if (own.IsValid)
+        {
+            TArray<SkeletalMeshComponent.FAttachment> list = own.Attachments;
+            for (int i = 0; i < list.Count; i++)
+            {
+                SkeletalMeshComponent.FAttachment a = list[i];
+                if (a.Component is not { IsValid: true } c || !_fits.TryGetValue(c.Ptr, out Fit? f) || f.Bone != a.BoneName.Index
+                    || !Near(a.RelativeLocation, f.LastLoc) || !Near(a.RelativeRotation, f.LastRot))
+                    continue;
+
+                a.RelativeLocation = f.OrigLoc;
+                a.RelativeRotation = f.OrigRot;
+                list[i] = a;
+            }
+        }
+
+        _fits.Clear();
+    }
+
+    private static bool Near(Vector3 a, Vector3 b) => Vector3.DistanceSquared(a, b) < 0.0001f;
+
+    private static bool Near(Rotator a, Rotator b) => Deg(a.Pitch - b.Pitch) < 0.05f && Deg(a.Yaw - b.Yaw) < 0.05f && Deg(a.Roll - b.Roll) < 0.05f;
+
+    private static float Deg(float d)
+    {
+        d %= 360f;
+        if (d < 0f)
+            d += 360f;
+        return MathF.Min(d, 360f - d);
+    }
+
+    private static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+    // ---- fitting the camera
+
+    private static readonly string[] HeadBones = { "Bip01_Head", "Head", "head", "Bip01_Neck", "Neck" };
+
+    private void PickHead(SkeletalMeshComponent own, SkeletalMeshComponent body)
+    {
+        _head = FName.None;
+        foreach (string name in HeadBones)
+        {
+            var n = new FName(name);
+            if (own.MatchRefBone(n) >= 0 && body.MatchRefBone(n) >= 0)
+            {
+                _head = n;
+                return;
+            }
+        }
+
+        Log.Info("disguise: no head bone shared with " + (body.SkeletalMesh?.Name.ToString() ?? "the worn body") + ", so FIT CAMERA can't follow it.");
+    }
+
+    /// <summary>
+    /// For the camera: Batman's head (where the game aims its camera), how far the worn head sits from it, and
+    /// how tall the worn body stands against Batman's, both measured from the feet this frame.
+    /// </summary>
+    internal bool CameraFit(out Vector3 pivot, out Vector3 shift, out float ratio)
+    {
+        pivot = shift = Vector3.Zero;
+        ratio = 1f;
+        if (!_fitCamera.On || _look == null || _head.Index == FName.None.Index || Characters.I.Busy)
+            return false;
+        if (_wearer is not { IsValid: true, bDeleteMe: false } wearer || World.Pawn?.Ptr != wearer.Ptr)
+            return false;
+        if (wearer.Mesh is not { IsValid: true } own || _body is not { IsValid: true } body)
+            return false;
+
+        Vector3 oh = own.GetBoneLocation(_head, 0);
+        Vector3 wh = body.GetBoneLocation(_head, 0);
+        if (!Finite(oh) || !Finite(wh) || oh == Vector3.Zero || wh == Vector3.Zero)
+            return false;
+
+        float feet = wearer.Location.Z - (wearer.CylinderComponent is { IsValid: true } cyl ? cyl.CollisionHeight : 90f);
+        float ownTall = oh.Z - feet, wornTall = wh.Z - feet;
+        if (ownTall < 20f || wornTall < 5f)
+            return false;
+
+        pivot = oh;
+        shift = wh - oh;
+        ratio = Math.Clamp(wornTall / ownTall, 0.3f, 2.5f);
+        return Vector3.Distance(oh, wh) < FitReach;
     }
 
     // ---- taking off
@@ -1107,7 +1342,10 @@ internal sealed class Disguise : Module
             }
 
             if (wearer.Mesh is { IsValid: true } own)
+            {
+                Safe.Run("disguise fit", () => RestoreFits(own));
                 own.bUpdateSkelWhenNotRendered = _oldUpdateSkel;
+            }
 
             if (wearer is RPawnPlayerBmBase { CapeComponent: { IsValid: true } cape } && cape.IsCapeHiddenGame != _capeWasHidden)
                 cape.CapeSetHiddenGame(_capeWasHidden);
@@ -1122,6 +1360,8 @@ internal sealed class Disguise : Module
         _props.Clear();
         _worn.Clear();
         _hidden.Clear();
+        _fits.Clear();
+        _head = FName.None;
         _body = null;
         _wearer = null;
     }
