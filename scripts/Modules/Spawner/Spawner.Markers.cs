@@ -22,7 +22,7 @@ internal sealed partial class Spawner
     private static readonly Rgba GuardIdle = new(84, 230, 140);
     private static readonly Rgba GuardFighting = new(255, 186, 64);
     private static readonly Rgba GuardDown = new(120, 130, 132);
-    private static readonly Rgba MarkerEdge = new(8, 14, 18);
+    internal static readonly Rgba MarkerEdge = new(8, 14, 18);
 
     private readonly HashSet<nint> _guardPtrs = new();
     private Toggle _markers = null!;
@@ -93,7 +93,7 @@ internal sealed partial class Spawner
     }
 
     /// <summary>A downward chevron, its tip just above the head, with a dark rim so it reads against bright sky.</summary>
-    private static void Chevron(float x, float tipY, float size, Rgba col)
+    internal static void Chevron(float x, float tipY, float size, Rgba col)
     {
         float w = size, h = size * 1.15f, rim = S(2f);
         Shapes.Triangle(x - w - rim, tipY - h - rim * 0.6f, x + w + rim, tipY - h - rim * 0.6f, x, tipY + rim * 1.4f, MarkerEdge, 0.9f);
@@ -118,7 +118,7 @@ internal sealed partial class Spawner
     /// For a bodyguard off screen or behind you: an arrow on an oval just inside the screen edge, pointing his way.
     /// The direction comes from the camera's own right and up axes, so it's right even when he's behind the camera.
     /// </summary>
-    private static void EdgeArrow(Vector3 where, Rgba col)
+    internal static void EdgeArrow(Vector3 where, Rgba col)
     {
         Vector3 d = where - WorldView.Eye;
         float rx = Vector3.Dot(d, WorldView.Right);

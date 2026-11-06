@@ -140,7 +140,7 @@ internal static class Layout
             new("JOKER", "joker_city", "joker_thugs", "joker_sightings"),
             new("VEHICLES", "npc_flip_cars"),
             new("TIME", "game_speed"),
-            new("INFO", "city_threats", "npc_count"),
+            new("INFO", "city_threats", "city_threat_esp", "city_threat_esp_range", "npc_count"),
         }),
         ("WORLD/ATMOSPHERE", new Section[]
         {

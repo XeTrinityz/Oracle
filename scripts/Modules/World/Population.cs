@@ -15,7 +15,7 @@ namespace CeZeY.Oracle;
 /// of the militia still holding your district. Everything goes through RPopulationManager's script entry
 /// points; the per-district arrays are left alone because their structs may not match the native layout.
 /// </summary>
-internal sealed class Population : Module
+internal sealed partial class Population : Module
 {
     public static readonly Population I = new();
 
@@ -43,7 +43,7 @@ internal sealed class Population : Module
     private string _threats = "";
     private string _threats2 = "";
 
-    public override bool HasHud => _readout.On && World.InGame;
+    public override bool HasHud => (_readout.On || _esp.On) && World.InGame;
 
     public override void Build()
     {
@@ -55,12 +55,14 @@ internal sealed class Population : Module
         AddCommand("city_getaway_car", "SPAWN GETAWAY CAR", "Starts a car chase near you on the roads: police after a fleeing car if the district has one, else a thug car. Chase it down.", SpawnGetaway);
 
         _readout = AddToggle("city_threats", "SHOW DISTRICT THREATS", "Shows which island you're on and how many watchtowers, checkpoints, drones and tanks the militia still has there.").Pref();
+        BuildEsp();
     }
 
     public override void WorldChanged()
     {
         _clearedIn = 0;
         _refresh.Force();
+        ForgetEsp();
     }
 
     public override void Shutdown() => Safe.Run("population restore", Release);
@@ -333,6 +335,14 @@ internal sealed class Population : Module
     }
 
     public override void Draw(Canvas c)
+    {
+        if (_esp.On)
+            Safe.Run("threat esp", () => DrawEsp(c));
+        if (_readout.On)
+            DrawReadout();
+    }
+
+    private void DrawReadout()
     {
         if (_refresh.Elapsed(ReadoutSeconds))
             Safe.Run("district readout", Refresh);
