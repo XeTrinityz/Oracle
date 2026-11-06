@@ -1,21 +1,20 @@
 using System.Numerics;
 using BmSDK;
 using BmSDK.Engine;
-using static CeZeY.Oracle.Catalog;
 
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// WORLD > ATMOSPHERE > SCENE > DUSK SKY (experimental). The pre-Scarecrow Gordon section draws its own sky: the
-/// dome mesh XFX_Merter.dome.Dome_Rise (sky material DOME_R_M plus the cloud layer Alt_Cloud_M_02_INST) on
-/// RStaticMeshToggleable_3, and a sun mesh using sun_M in the chapter's StaticMeshCollectionActor. Both are cooked
-/// only into that chapter's map package, CityZ_10_Ch2C. This loads the package into memory without adding it to
-/// the world (so its scripts and characters never start), then spawns Oracle's own copies of the dome and sun at
-/// the same place. Turning it off destroys the copies.
+/// The sky half of PRE-SCARECROW ERA. The Gordon section draws its own sky: the dome mesh XFX_Merter.dome.Dome_Rise
+/// (sky material DOME_R_M plus cloud layers) on RStaticMeshToggleable_3, a sun sphere using sun_M in the chapter's
+/// StaticMeshCollectionActor, and a LensFlareSource for the sun's glow. All are cooked only into that chapter's map
+/// package, CityZ_10_Ch2C. This loads the package into memory without adding it to the world (so its scripts and
+/// characters never start), then spawns Oracle's own copies at the same place; going off destroys them.
+/// No menu row of its own; <see cref="PreScarecrowEra"/> switches it.
 /// </summary>
-internal sealed class DuskSky : Module
+internal sealed class PreScarecrowSky : Module
 {
-    public static readonly DuskSky I = new();
+    public static readonly PreScarecrowSky I = new();
 
     private const string Package = "CityZ_10_Ch2C";
     private const string DomeMesh = "XFX_Merter.dome.Dome_Rise";
@@ -23,31 +22,17 @@ internal sealed class DuskSky : Module
     private const string SunCollection = "StaticMeshCollectionActor_7042";
 
     private readonly List<Actor> _spawned = new();
-    private bool _wanted;
-    private bool _era;
+    private bool _on;
     private bool _dirty;
     private bool _failed;
 
-    /// <summary>PRE-SCARECROW ERA turns the sky on while it's on, whatever this row is set to.</summary>
-    public void SetEra(bool on)
+    public void Set(bool on)
     {
-        if (_era == on)
+        if (_on == on)
             return;
-        _era = on;
+        _on = on;
         _failed = false;
         _dirty = true;
-    }
-
-    public override void Build()
-    {
-        AddToggle("dusk_sky", "DUSK SKY",
-            "EXPERIMENTAL. Brings back the dusk sky and sun from the Gordon section before the Scarecrow attack, to go with the PRE-SCARECROW scene look. It loads that chapter's map into memory (about 25 MB) to borrow them.",
-            on =>
-            {
-                _wanted = on;
-                _failed = false;
-                _dirty = true;
-            }).Pref(); // never switched on by a load: if borrowing the map crashes, it mustn't crash every load
     }
 
     public override void WorldChanged()
@@ -57,7 +42,7 @@ internal sealed class DuskSky : Module
         _dirty = true;
     }
 
-    public override void Shutdown() => Safe.Run("dusk sky remove", Remove);
+    public override void Shutdown() => Safe.Run("era sky remove", Remove);
 
     public override void Tick(float dt)
     {
@@ -65,7 +50,7 @@ internal sealed class DuskSky : Module
             return;
         _dirty = false;
 
-        if (!_wanted && !_era)
+        if (!_on)
         {
             Remove();
             return;
@@ -74,7 +59,7 @@ internal sealed class DuskSky : Module
         if (_failed || _spawned.Any(a => a.IsValid))
             return;
 
-        Safe.Run("dusk sky", Spawn);
+        Safe.Run("era sky", Spawn);
     }
 
     private void Remove()
@@ -86,7 +71,7 @@ internal sealed class DuskSky : Module
         }
 
         if (_spawned.Count > 0)
-            Log.Info("DUSK SKY: removed " + _spawned.Count + " sky pieces.");
+            Log.Info("PRE-SCARECROW ERA sky: removed " + _spawned.Count + " sky pieces.");
         _spawned.Clear();
     }
 
@@ -95,7 +80,7 @@ internal sealed class DuskSky : Module
         StaticMesh? dome = Game.FindObject<StaticMesh>(DomeMesh);
         if (dome == null)
         {
-            Log.Info("DUSK SKY: loading " + Package + " for its sky.");
+            Log.Info("PRE-SCARECROW ERA sky: loading " + Package + " for its sky.");
             Game.LoadPackage(Package);
             dome = Game.FindObject<StaticMesh>(DomeMesh);
         }
@@ -139,10 +124,10 @@ internal sealed class DuskSky : Module
         }
         else
         {
-            Log.Info("DUSK SKY: no sun piece found (sun material " + (sun == null ? "not loaded" : "loaded") + ").");
+            Log.Info("PRE-SCARECROW ERA sky: no sun piece found (sun material " + (sun == null ? "not loaded" : "loaded") + ").");
         }
 
-        Safe.Run("dusk sky flare", Flare);
+        Safe.Run("era sky flare", Flare);
     }
 
     // The sun's glow: a LensFlareSource far out along the sun's direction (it reuses the Batmobile brake-light flare).
@@ -157,13 +142,13 @@ internal sealed class DuskSky : Module
 
         if (src?.LensFlareComp is not { IsValid: true } comp || comp.Template is not { IsValid: true } template)
         {
-            Log.Info("DUSK SKY: no sun flare found.");
+            Log.Info("PRE-SCARECROW ERA sky: no sun flare found.");
             return;
         }
 
         if (Game.SpawnActor(LensFlareSource.StaticClass(), default, src.Location, src.Rotation) is not LensFlareSource flare || flare.LensFlareComp is not { IsValid: true } dst)
         {
-            Log.Info("DUSK SKY: the sun flare couldn't be spawned (the class may not allow it).");
+            Log.Info("PRE-SCARECROW ERA sky: the sun flare couldn't be spawned (the class may not allow it).");
             return;
         }
 
@@ -172,14 +157,14 @@ internal sealed class DuskSky : Module
         flare.SetDrawScale(src.DrawScale);
         flare.SetDrawScale3D(src.DrawScale3D);
         _spawned.Add(flare);
-        Log.Info($"DUSK SKY: placed the sun flare {template.GetPathName(null)} at {src.Location}.");
+        Log.Info($"PRE-SCARECROW ERA sky: placed the sun flare {template.GetPathName(null)} at {src.Location}.");
     }
 
     private void Fail(string why)
     {
         _failed = true;
-        Log.Info("DUSK SKY: " + why + ".");
-        Overlay.Notice("DUSK SKY", why.ToUpperInvariant(), false);
+        Log.Info("PRE-SCARECROW ERA sky: " + why + ".");
+        Overlay.Notice("PRE-SCARECROW ERA", why.ToUpperInvariant(), false);
     }
 
     private static void Describe(string what, StaticMeshComponent c)
@@ -188,7 +173,7 @@ internal sealed class DuskSky : Module
         string ownerText = owner is { IsValid: true }
             ? $"{owner.GetPathName(null)} at {owner.Location} rot ({owner.Rotation.Pitch:0.##},{owner.Rotation.Yaw:0.##},{owner.Rotation.Roll:0.##}) drawscale {owner.DrawScale:0.###} x {owner.DrawScale3D}"
             : "none";
-        Log.Info($"DUSK SKY {what}: {c.GetPathName(null)} mesh {c.StaticMesh?.GetPathName(null)} hidden {c.HiddenGame}; owner {ownerText}; " +
+        Log.Info($"PRE-SCARECROW ERA sky {what}: {c.GetPathName(null)} mesh {c.StaticMesh?.GetPathName(null)} hidden {c.HiddenGame}; owner {ownerText}; " +
                  $"component translation {c.Translation} scale {c.Scale:0.###} x {c.Scale3D}; parent-to-world origin {Origin(c.CachedParentToWorld)}; radius {c.Bounds.SphereRadius:0}.");
     }
 
@@ -220,7 +205,7 @@ internal sealed class DuskSky : Module
 
         if (Game.SpawnActor(DynamicSMActor_Spawnable.StaticClass(), default, location, rotation) is not DynamicSMActor actor)
         {
-            Log.Info("DUSK SKY: the " + what + " couldn't be spawned.");
+            Log.Info("PRE-SCARECROW ERA sky: the " + what + " couldn't be spawned.");
             return;
         }
 
@@ -239,7 +224,7 @@ internal sealed class DuskSky : Module
         }
 
         _spawned.Add(actor);
-        Log.Info($"DUSK SKY: placed the {what} at {location} rot ({rotation.Pitch:0.##},{rotation.Yaw:0.##},{rotation.Roll:0.##}) scale {scale} with {count} materials.");
+        Log.Info($"PRE-SCARECROW ERA sky: placed the {what} at {location} rot ({rotation.Pitch:0.##},{rotation.Yaw:0.##},{rotation.Roll:0.##}) scale {scale} with {count} materials.");
     }
 
     // FMatrix is 16 floats in rows, the same layout as Matrix4x4; BmSDK's FPlane only exposes W.

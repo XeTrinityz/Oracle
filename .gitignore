@@ -9,7 +9,6 @@ camera_slots/
 /saves/
 fight_brain.txt
 render_originals.txt
-looks/
 
 # The player's own songs; only the instructions file ships
 Music/*

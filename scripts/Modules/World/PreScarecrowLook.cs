@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Numerics;
 using BmSDK.Engine;
-using static CeZeY.Oracle.Catalog;
 using FColor = BmSDK.GameObject.FColor;
 using FLinearColor = BmSDK.GameObject.FLinearColor;
 using PPSettings = BmSDK.Engine.PostProcessVolume.FPostProcessSettings;
@@ -9,20 +8,20 @@ using PPSettings = BmSDK.Engine.PostProcessVolume.FPostProcessSettings;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// WORLD > ATMOSPHERE > SCENE LOOK: replaces the city's whole look (fog layers, sky gradient, haze, exposure,
-/// bloom, tone and colour grading) with exact values, written into every post process volume and the world
-/// default. Built-in looks come from captures (CAPTURE LOOK); any capture in the looks folder is offered too.
-/// Each volume's own values are kept in memory and written back for GAME.
+/// The look half of PRE-SCARECROW ERA: replaces the city's whole look (fog layers, sky gradient, haze, exposure,
+/// bloom, tone and colour grading) with the Gordon section's exact values, written into every post process volume
+/// and the world default. Each volume's own values are kept in memory and written back when the era goes off.
+/// No menu row of its own; <see cref="PreScarecrowEra"/> switches it.
 /// </summary>
-internal sealed class LookPresets : Module
+internal sealed class PreScarecrowLook : Module
 {
-    public static readonly LookPresets I = new();
+    public static readonly PreScarecrowLook I = new();
 
     private const string DefaultKey = "__WorldDefault__";
     private const double ScanSeconds = 1.0;
 
-    // From capture_20261105_234344 (chapter 2.3, playing as Gordon before the Scarecrow attack):
-    // CityZ_10_Ch2C PostProcessVolume_0, the chapter's top-priority volume and the look the camera saw.
+    // Chapter 2.3, playing as Gordon before the Scarecrow attack: CityZ_10_Ch2C PostProcessVolume_0, the chapter's
+    // top-priority volume (about 8.5e24) and the look the camera saw there.
     private const string PreScarecrow = """
         bAtmosD1=true
         AtmosD1_Colour=(B=113,G=170,R=227,A=255)
@@ -85,7 +84,6 @@ internal sealed class LookPresets : Module
     private static readonly Field[] Fields = BuildFields();
     private static readonly Dictionary<string, Field> ByName = Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
-    private Choice _choice = null!;
     private Dictionary<string, string>? _look;
     private Texture? _lut;
     private bool _force;
@@ -93,18 +91,6 @@ internal sealed class LookPresets : Module
 
     // Per volume (by path), the game's own value of every field written there.
     private readonly Dictionary<string, Dictionary<string, string>> _originals = new();
-
-    public override void Build()
-    {
-        _choice = AddChoice("scene_look", "SCENE LOOK",
-            "Replaces the whole city look with one taken from the story. PRE-SCARECROW is the warm, hazy Gotham you play as Gordon before the attack. Your own captures from CAPTURE LOOK are listed too. Best with SKY & FOG LOOK on VANILLA.",
-            new[] { "game", "pre_scarecrow" }, new[] { "GAME", "PRE-SCARECROW" }, _ => Pick());
-
-        // Before settings load, so a saved capture pick finds its option.
-        RefreshCaptures();
-    }
-
-    public override void MenuOpening() => RefreshCaptures();
 
     public override void WorldChanged()
     {
@@ -117,53 +103,16 @@ internal sealed class LookPresets : Module
     public override void Shutdown()
     {
         _look = null;
-        Safe.Run("scene look restore", ApplyAll);
+        Safe.Run("era look restore", ApplyAll);
     }
 
-    private void RefreshCaptures()
+    public void Set(bool on)
     {
-        var keys = new List<string> { "game", "pre_scarecrow" };
-        var labels = new List<string> { "GAME", "PRE-SCARECROW" };
-        string dir = Path.Combine(App.Dir, "looks");
-        if (Directory.Exists(dir))
-        {
-            foreach (string file in Directory.GetFiles(dir, "*.txt").OrderBy(f => f))
-            {
-                string name = Path.GetFileNameWithoutExtension(file);
-                keys.Add("file:" + name);
-                labels.Add(name.Replace("capture_", "CAPTURE ").Replace('_', ' ').ToUpperInvariant());
-            }
-        }
-
-        _choice.SetOptions(keys.ToArray(), labels.ToArray());
-    }
-
-    private bool _era;
-
-    /// <summary>PRE-SCARECROW ERA forces the pre-Scarecrow look while on, whatever this row is set to.</summary>
-    public void SetEra(bool on)
-    {
-        if (_era == on)
+        if ((_look != null) == on)
             return;
-        _era = on;
-        Pick();
-    }
-
-    private void Pick()
-    {
-        string key = _era ? "pre_scarecrow" : _choice.CurrentKey;
-        _look = key switch
-        {
-            "game" or "" => null,
-            "pre_scarecrow" => Parse(PreScarecrow),
-            _ when key.StartsWith("file:") => FromCapture(Path.Combine(App.Dir, "looks", key.Substring(5) + ".txt")),
-            _ => null,
-        };
+        _look = on ? Parse(PreScarecrow) : null;
         _lut = null;
         _force = true;
-
-        if (_look != null && !_era && Atmosphere.I.Wanted)
-            Overlay.Notice("SCENE LOOK", "SET SKY & FOG LOOK TO VANILLA", false);
     }
 
     public override void Tick(float dt)
@@ -236,7 +185,7 @@ internal sealed class LookPresets : Module
             }
             catch (Exception e)
             {
-                Log.Throttled("scene look " + name, "SCENE LOOK: couldn't set " + name + " to " + value + ": " + e.Message);
+                Log.Throttled("era look " + name, "PRE-SCARECROW ERA: couldn't set " + name + " to " + value + ": " + e.Message);
             }
         }
     }
@@ -272,7 +221,7 @@ internal sealed class LookPresets : Module
             }
         }
 
-        Log.Throttled("scene look lut " + path, "SCENE LOOK: colour grading " + path + " isn't loaded here, so the look runs without it.");
+        Log.Throttled("era look lut " + path, "PRE-SCARECROW ERA: colour grading " + path + " isn't loaded here, so the look runs without it.");
         return null;
     }
 
@@ -292,47 +241,6 @@ internal sealed class LookPresets : Module
         }
 
         return d;
-    }
-
-    /// <summary>A capture's look: what the camera saw, with the colour grading of the top volume around it.</summary>
-    private static Dictionary<string, string>? FromCapture(string path)
-    {
-        if (!File.Exists(path))
-            return null;
-
-        string? section = null;
-        var blended = new StringWriter();
-        string lut = "None";
-        double bestPriority = double.MinValue;
-        double priority = 0;
-
-        foreach (string raw in File.ReadLines(path))
-        {
-            string line = raw.Trim();
-            if (line.StartsWith('['))
-            {
-                section = line;
-                priority = 0;
-                continue;
-            }
-
-            if (section == "[blended]")
-                blended.WriteLine(line);
-            else if (section != null && section.StartsWith("[volume "))
-            {
-                if (line.StartsWith("priority="))
-                    double.TryParse(line.Substring(9), NumberStyles.Float, CultureInfo.InvariantCulture, out priority);
-                else if (line.StartsWith(LutField + "=") && priority >= bestPriority && !line.EndsWith("=None"))
-                {
-                    bestPriority = priority;
-                    lut = line.Substring(LutField.Length + 1);
-                }
-            }
-        }
-
-        Dictionary<string, string> look = Parse(blended.ToString());
-        look[LutField] = lut;
-        return look;
     }
 
     // ---- field table

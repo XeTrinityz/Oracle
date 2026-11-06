@@ -427,7 +427,7 @@ internal sealed class Rain : Module
         }
     }
 
-    private static void DryPawns()
+    internal static void DryPawns()
     {
         foreach (RPawnCharacter p in World.All<RPawnCharacter>())
         {
