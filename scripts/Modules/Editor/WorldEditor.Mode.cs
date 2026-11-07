@@ -99,7 +99,7 @@ internal sealed partial class WorldEditor
         Array.Clear(_was);
         // Keys already down when the mode starts (the hotkey, a held click) count only once they're let go.
         foreach (int vk in ModeKeys)
-            _was[vk] = Native.GameInFront() && (Native.GetAsyncKeyState(vk) & 0x8000) != 0;
+            _was[vk] = Keyboard.IsDown((Keys)vk);
         _clickAt = -1;
         _clickGrab = false;
         _modeOn = true;
@@ -166,7 +166,7 @@ internal sealed partial class WorldEditor
             GameKeys.Mute(editor: true);
     }
 
-    private bool Down(int vk) => (Native.GetAsyncKeyState(vk) & 0x8000) != 0;
+    private bool Down(int vk) => Keyboard.IsDown((Keys)vk);
 
     /// <summary>True on the tick a key goes down.</summary>
     private bool Pressed(int vk, bool down)

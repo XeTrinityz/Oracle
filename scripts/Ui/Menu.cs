@@ -236,7 +236,7 @@ internal static class Menu
             if (_held[i] < 0f)
                 continue;
 
-            if ((Native.GetAsyncKeyState((int)RepeatKeys[i]) & 0x8000) == 0)
+            if (!Keyboard.IsDown(RepeatKeys[i]))
             {
                 _held[i] = -1f;
                 continue;

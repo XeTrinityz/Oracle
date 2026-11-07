@@ -118,10 +118,10 @@ Removed from the original: the FUN page (stamina and fall damage).
 ## Install
 
 1. Install [BmSDK-AK](https://github.com/Team-BmSDK/BmSDK-AK) v0.21.0, then replace its
-   `Binaries/Win64/sdk/BmSDK.dll` with the one built from the `dev/batch-4` branch of
-   [XeTrinityz/BmSDK-AK](https://github.com/XeTrinityz/BmSDK-AK). Oracle needs that fork's fixes and additions
-   (how game functions are called, key swallowing, drawing and key events while paused, static natives on an
-   instance); the fixes are proposed upstream starting at
+   `Binaries/Win64/sdk/BmSDK.dll` with the one from the
+   [latest release of XeTrinityz/BmSDK-AK](https://github.com/XeTrinityz/BmSDK-AK/releases/latest). Oracle needs
+   that fork's fixes and additions (how game functions are called, key swallowing, drawing and key events while
+   paused, static natives on an instance); the fixes are proposed upstream starting at
    [BmSDK-AK #15](https://github.com/Team-BmSDK/BmSDK-AK/pull/15).
 2. Put this folder in `Batman Arkham Knight/BmGame/Mods/` so you have `BmGame/Mods/Oracle/mod.toml`.
 3. Start the game and press **F3**.

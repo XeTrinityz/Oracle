@@ -21,9 +21,6 @@ internal static class Native
     }
 
     [DllImport("user32.dll")]
-    public static extern short GetAsyncKeyState(int vKey);
-
-    [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll")]
@@ -46,9 +43,6 @@ internal static class Native
         GetWindowThreadProcessId(GetForegroundWindow(), out uint pid);
         return pid == (uint)Environment.ProcessId;
     }
-
-    /// <summary>Whether a key or mouse button is held right now. Mouse buttons work too: they have key codes of their own.</summary>
-    public static bool Down(Keys key) => (GetAsyncKeyState((int)key & 0xFF) & 0x8000) != 0;
 
     /// <summary>The centre of the game window's drawing area in screen pixels, when the game is the window in front.</summary>
     public static bool GameCentre(out int x, out int y)

@@ -514,7 +514,7 @@ internal sealed class FreeCam : Module
         _ended = "STOPPED: " + ex.Message.ToUpperInvariant();
     }
 
-    private static bool Down(int vk) => (Native.GetAsyncKeyState(vk) & 0x8000) != 0;
+    private static bool Down(int vk) => Keyboard.IsDown((Keys)vk);
 
     /// <summary>True on the frame a key goes down.</summary>
     private bool Pressed(int vk)

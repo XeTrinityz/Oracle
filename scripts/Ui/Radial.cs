@@ -156,7 +156,7 @@ internal static class Radial
         HandBackEscape();
 
         bool front = Native.GameInFront();
-        bool key = front && Enabled && Native.Down(Key);
+        bool key = front && Enabled && Keyboard.IsDown(Key);
         bool pressed = key && !_keyWas;
         _keyWas = key;
 
@@ -212,12 +212,12 @@ internal static class Radial
         bool keys = PollDirectionKeys();
         PollMouse(apply: !keys);
 
-        bool left = Native.Down(Keys.LButton);
+        bool left = Keyboard.IsDown(Keys.LButton);
         if (left && !_leftWas)
             Use();
         _leftWas = left;
 
-        bool right = Native.Down(Keys.RButton);
+        bool right = Keyboard.IsDown(Keys.RButton);
         if (right && !_rightWas)
             Close();
         _rightWas = right;
@@ -240,8 +240,8 @@ internal static class Radial
         if (Page >= Pages)
             Page = 0;
 
-        _leftWas = Native.Down(Keys.LButton);
-        _rightWas = Native.Down(Keys.RButton);
+        _leftWas = Keyboard.IsDown(Keys.LButton);
+        _rightWas = Keyboard.IsDown(Keys.RButton);
         _mouseArmed = false;
         ArmMouse();
 
@@ -260,7 +260,7 @@ internal static class Radial
         if (!Menu.IsOpen && Shared.MenuOwner == Menu.OwnerName)
             Shared.MenuOwner = null;
 
-        if (Native.Down(Keys.Escape))
+        if (Keyboard.IsDown(Keys.Escape))
             _releaseLater = true;
         else
             Menu.ReleaseMovement();
@@ -270,7 +270,7 @@ internal static class Radial
     /// <summary>Gives the game its keys back once ESC is up, after the radial or editor closed on an ESC press.</summary>
     private static void HandBackEscape()
     {
-        if ((!_releaseLater && !_reholdLater) || Native.Down(Keys.Escape))
+        if ((!_releaseLater && !_reholdLater) || Keyboard.IsDown(Keys.Escape))
             return;
 
         if (_releaseLater && !IsLive && !Menu.IsOpen)
@@ -424,8 +424,8 @@ internal static class Radial
     /// <summary>WASD and the arrows point in eight directions. Returns true while any of them is held.</summary>
     private static bool PollDirectionKeys()
     {
-        int dx = (Native.Down(Keys.D) || Native.Down(Keys.Right) ? 1 : 0) - (Native.Down(Keys.A) || Native.Down(Keys.Left) ? 1 : 0);
-        int dy = (Native.Down(Keys.S) || Native.Down(Keys.Down) ? 1 : 0) - (Native.Down(Keys.W) || Native.Down(Keys.Up) ? 1 : 0);
+        int dx = (Keyboard.IsDown(Keys.D) || Keyboard.IsDown(Keys.Right) ? 1 : 0) - (Keyboard.IsDown(Keys.A) || Keyboard.IsDown(Keys.Left) ? 1 : 0);
+        int dy = (Keyboard.IsDown(Keys.S) || Keyboard.IsDown(Keys.Down) ? 1 : 0) - (Keyboard.IsDown(Keys.W) || Keyboard.IsDown(Keys.Up) ? 1 : 0);
         if (dx == 0 && dy == 0)
             return false;
 
@@ -519,7 +519,7 @@ internal static class Radial
         // Back to the menu's usual keys, ESC live again so the pause menu still opens from the menu.
         if (Menu.IsOpen)
         {
-            if (Native.Down(Keys.Escape))
+            if (Keyboard.IsDown(Keys.Escape))
                 _reholdLater = true;
             else
                 Menu.HoldInput();
