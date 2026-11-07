@@ -325,7 +325,7 @@ internal sealed class FreeCam : Module
     {
         _muted = true;
         if (!GameKeys.IsMuted && !Menu.IsOpen && !Radial.IsLive)
-            GameKeys.Mute(pc, editor: true);
+            GameKeys.Mute(editor: true);
     }
 
     private void Unmute()
@@ -335,7 +335,7 @@ internal sealed class FreeCam : Module
 
         _muted = false;
         if (!Menu.IsOpen && !Radial.IsLive)
-            Safe.Run("free camera keys", () => GameKeys.Unmute(World.Pc));
+            Safe.Run("free camera keys", GameKeys.Unmute);
     }
 
     private void Pin(R3rdPersonCamera cam)

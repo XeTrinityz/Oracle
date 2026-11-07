@@ -197,17 +197,13 @@ internal static class Menu
                 _inputPc = pc.Ptr;
             }
         });
-        Safe.Run("menu keys", () =>
-        {
-            if (World.Pc is { } pc)
-                GameKeys.Mute(pc, pointer, escape);
-        });
+        Safe.Run("menu keys", () => GameKeys.Mute(pointer, escape));
     }
 
     /// <summary>Hands input back to the game. Also used while the menu stays open for actions that wait on the player.</summary>
     public static void ReleaseMovement()
     {
-        Safe.Run("menu keys", () => GameKeys.Unmute(World.Pc));
+        Safe.Run("menu keys", GameKeys.Unmute);
         Safe.Run("menu input", () =>
         {
             if (_inputPc != 0 && World.Pc is { } pc && pc.Ptr == _inputPc)

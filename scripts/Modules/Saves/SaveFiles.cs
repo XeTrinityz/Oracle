@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using BmSDK;
@@ -242,34 +241,18 @@ internal static class SaveFiles
     }
 
     /// <summary>
-    /// The bytes in a game-owned array, for natives that take array&lt;byte&gt;. The constructor allocates with the
-    /// game's allocator; the data is copied straight in and the count set in the header (data, count, capacity),
-    /// as Push would do one element at a time for 2.4 MB.
+    /// The bytes in a game-owned array, for natives that take array&lt;byte&gt;: one block copy into memory from the
+    /// game's allocator.
     /// </summary>
     public static TArray<byte> ToGameArray(byte[] data)
     {
-        var arr = new TArray<byte>(data.Length);
-        try
-        {
-            nint dst = Marshal.ReadIntPtr(arr.Ptr);
-            if (arr.Capacity >= data.Length && dst != 0)
-            {
-                Marshal.Copy(data, 0, dst, data.Length);
-                Marshal.WriteInt32(arr.Ptr + 8, data.Length);
-            }
-            else
-            {
-                arr.Push(data);
-            }
-
-            if (arr.Count != data.Length)
-                throw new InvalidOperationException("the save didn't fit in the game's buffer");
-            return arr;
-        }
-        catch
+        var arr = new TArray<byte>(data);
+        if (arr.Count != data.Length)
         {
             arr.Dispose();
-            throw;
+            throw new InvalidOperationException("the save didn't fit in the game's buffer");
         }
+
+        return arr;
     }
 }

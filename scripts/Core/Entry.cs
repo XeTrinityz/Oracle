@@ -1,8 +1,9 @@
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// The only type BmSDK talks to. An exception escaping any of these callbacks exits the game
-/// (Loader.RunGuarded calls Environment.Exit), so each one goes straight through <see cref="Safe"/>.
+/// The only type BmSDK talks to. BmSDK logs an exception escaping a callback and switches the callback off after
+/// ten in a row, so each one goes straight through <see cref="Safe"/>, which logs with Oracle's own context and
+/// keeps the callback alive.
 /// </summary>
 [Script]
 public sealed class OracleMod : Script
@@ -26,6 +27,7 @@ public sealed class OracleMod : Script
 
     private void Start()
     {
+        Shared.Bind(Mod);
         string dir = Mod.DirectoryPath;
         Safe.Run("start", () => App.Start(dir));
     }

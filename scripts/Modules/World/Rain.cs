@@ -146,18 +146,17 @@ internal sealed class Rain : Module
     }
 
     /// <summary>
-    /// Uses the script function IsGasActive (the story's toxin side chapter, or the GasActiveInOverworld flag), an
-    /// ordinary call on the game info. Never the static natives IsFearGasActive/IsLocationInFearGas/
-    /// GetFearGasHeightAtLocation: BmSDK runs a static function on the class default object, which these natives
-    /// evidently can't work from, and IsFearGasActive crashed the game in coreclr twice on 2026-11-05, which no
-    /// try/catch can stop.
+    /// Asks the game info whether a toxin cloud is live (IsFearGasActive, the native the game itself uses) or the
+    /// story has one (IsGasActive: the toxin side chapter, or the GasActiveInOverworld flag). The fear-gas natives
+    /// are static and read the game info they run on, so they go through the fork's instance form: the static form
+    /// runs them on the class default object and crashed the game.
     /// </summary>
     private static void WarnNoCloud(float v)
     {
         if (v <= 0f || World.Info is not { } gi)
             return;
 
-        if (!Safe.Try("gas check", () => gi.IsGasActive()))
+        if (!Safe.Try("gas check", () => gi.IsFearGasActive() || gi.IsGasActive()))
             Overlay.Notice("TOXIN RAIN", "NEEDS SCARECROW'S TOXIN CLOUD", false);
     }
 

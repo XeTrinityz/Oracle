@@ -126,7 +126,7 @@ internal sealed partial class WorldEditor
 
         PlayerController? pc = World.Pc;
         if (!Menu.IsOpen && !Radial.IsLive)
-            Safe.Run("editor keys", () => GameKeys.Unmute(pc));
+            Safe.Run("editor keys", GameKeys.Unmute);
         if (_modeInput && pc != null)
             Safe.Run("editor input", () => pc.IgnoreMoveInput(false));
         _modeInput = false;
@@ -162,8 +162,8 @@ internal sealed partial class WorldEditor
     /// <summary>The menu and radial unmute every key when they close, so the mode takes its keys back after them.</summary>
     private static void MuteKeys()
     {
-        if (!GameKeys.IsMuted && World.Pc is { } pc)
-            GameKeys.Mute(pc, editor: true);
+        if (!GameKeys.IsMuted)
+            GameKeys.Mute(editor: true);
     }
 
     private bool Down(int vk) => (Native.GetAsyncKeyState(vk) & 0x8000) != 0;

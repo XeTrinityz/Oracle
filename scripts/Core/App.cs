@@ -83,7 +83,7 @@ internal static class App
 
     public static void SdkKey(Keys key)
     {
-        if (_started && !Fallback.Active)
+        if (_started)
             KeyInput.Pressed(key);
     }
 

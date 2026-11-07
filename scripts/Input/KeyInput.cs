@@ -47,15 +47,13 @@ internal static class KeyInput
 }
 
 /// <summary>
-/// In some states the game stops ticking mods but keeps rendering. When ticks go quiet this reads the keyboard
-/// directly and drives the update from the render hook, so the menu and hotkeys never go dead.
+/// In some states the game stops ticking mods but keeps rendering. When ticks go quiet this drives the update from
+/// the frame instead, so the menu never goes dead. Key presses need no help: BmSDK delivers them from the engine
+/// tick, which runs in every state.
 /// </summary>
 internal static class Fallback
 {
     private const double QuietSeconds = 0.5;
-
-    private static readonly bool[] _down = new bool[256];
-    private static readonly List<Keys> _watch = new();
 
     private static long _lastSdkTick = Stopwatch.GetTimestamp();
     private static bool _logged;
@@ -72,28 +70,7 @@ internal static class Fallback
         if (!_logged)
         {
             _logged = true;
-            Log.Info("The game stopped ticking mods here, Oracle now reads the keyboard itself.");
-        }
-
-        _watch.Clear();
-        _watch.Add(Settings.MenuKey);
-        _watch.AddRange(Menu.ControlKeys);
-        if (Menu.IsOpen)
-            _watch.AddRange(Menu.TypingKeys);
-        if (Radial.IsLive)
-            _watch.AddRange(Radial.WatchKeys);
-        _watch.AddRange(Settings.BoundKeys);
-        if (Characters.I.PlayingOther)
-            _watch.Add(Keys.E);
-
-        bool front = Native.GameInFront();
-        foreach (Keys k in _watch)
-        {
-            int vk = (int)k & 0xFF;
-            bool down = front && (Native.GetAsyncKeyState(vk) & 0x8000) != 0;
-            if (down && !_down[vk])
-                KeyInput.Pressed(k);
-            _down[vk] = down;
+            Log.Info("The game stopped ticking mods here, Oracle now updates from the frame.");
         }
 
         App.Tick();

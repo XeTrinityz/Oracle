@@ -5,9 +5,9 @@ using BmSDK.Engine;
 namespace CeZeY.Oracle;
 
 /// <summary>
-/// Validated view of the player and game objects. Game.Get* throw when an object is missing and each runs
-/// UnrealScript, so everything reads the cached references here instead. Getters re-check IsValid because
-/// touching a destroyed wrapper dereferences a null pointer, which no try/catch can recover from.
+/// Validated view of the player and game objects. Each Game.TryGet* runs UnrealScript, so everything reads the
+/// cached references here instead. Getters re-check IsValid so a destroyed wrapper is never handed out: a call on
+/// one throws, and a property read faults.
 /// </summary>
 internal static class World
 {
@@ -105,33 +105,19 @@ internal static class World
 
     private static void Refind()
     {
-        try
-        {
-            _pc = Game.GetPlayerController(0);
-        }
-        catch
-        {
-            _pc = null;
-        }
-
-        try
-        {
-            _info = _pc == null ? null : Game.GetGameInfo();
-        }
-        catch
-        {
-            _info = null;
-        }
+        _pc = Game.TryGetPlayerController(out RPlayerController? pc) ? pc : null;
+        _info = _pc != null && Game.TryGetGameInfo(out RGameInfo? info) ? info : null;
     }
 
     /// <summary>The game's replication info: streaming, flags and the loaded player data. Null when unavailable.</summary>
-    public static RGameRI? Ri => Fetch(Game.GetGameRI);
+    public static RGameRI? Ri => Game.TryGetGameRI(out RGameRI? ri) ? ri : null;
 
-    public static WorldInfo? WorldInfo => Fetch(Game.GetWorldInfo);
+    public static WorldInfo? WorldInfo => Game.TryGetWorldInfo(out WorldInfo? wi) ? wi : null;
 
     /// <summary>The global engine object, which lives for the whole session (main menu included).</summary>
-    public static _Engine? GameEngine => Fetch(Game.GetEngine);
+    public static _Engine? GameEngine => Game.TryGetEngine(out GameEngine? engine) ? engine : null;
 
+    /// <summary>The cheat manager, which Game creates on first use. Null without a player controller.</summary>
     public static RCheatManager? Cheats => Fetch(Game.GetCheatManager);
 
     /// <summary>The cheat manager, or a refusal a command can show.</summary>
@@ -140,7 +126,7 @@ internal static class World
     /// <summary>The possessed pawn, or a refusal a command can show.</summary>
     public static Pawn RequirePawn() => Pawn ?? throw new InvalidOperationException("the game is still loading");
 
-    /// <summary>A Game.Get* singleton, valid or null: those calls throw instead of returning null when it's missing.</summary>
+    /// <summary>A Game.Get* object, valid or null: those calls throw instead of returning null when it's missing.</summary>
     private static T? Fetch<T>(Func<T> get) where T : GameObject
     {
         try
