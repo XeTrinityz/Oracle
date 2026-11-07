@@ -41,6 +41,9 @@ internal sealed class Movement : Module
         Field<RGrappleGun>("boost height mk3", g => g.MaxGrappleBoostExtraHeightMk3, (g, v) => g.MaxGrappleBoostExtraHeightMk3 = v),
         Field<RGrappleGun>("boost height mk4", g => g.MaxGrappleBoostExtraHeightMk4, (g, v) => g.MaxGrappleBoostExtraHeightMk4 = v));
 
+    private readonly Scaled<RGrappleGun> _height = new(
+        Field<RGrappleGun>("grapple height", g => g.MaxGrappleHeight, (g, v) => g.MaxGrappleHeight = v));
+
     private readonly Scaled<RLineLauncher> _zip = new(
         Field<RLineLauncher>("line launcher max speed", l => l.ZipForwardMaxSpeed, (l, v) => l.ZipForwardMaxSpeed = v),
         Field<RLineLauncher>("line launcher accel", l => l.ZipForwardAccel, (l, v) => l.ZipForwardAccel = v));
@@ -51,6 +54,7 @@ internal sealed class Movement : Module
     private Slider _glideSpeed = null!;
     private Slider _grappleSpeed = null!;
     private Slider _boostPower = null!;
+    private Slider _grappleHeight = null!;
     private Slider _zipSpeed = null!;
     private Slider _gravity = null!;
     private Slider _tunnelSpeed = null!;
@@ -74,6 +78,10 @@ internal sealed class Movement : Module
             1f, 0.5f, 3f, 0.25f, 2f, Fmt.Times, _ => ApplyBoost());
         _boostPower.Maintain(ApplyBoost);
 
+        _grappleHeight = AddSlider("grapple_height", "GRAPPLE HEIGHT", "How high a ledge the grapple gun will take: the top of the game's tallest buildings at 1.00x.",
+            1f, 0.5f, 3f, 0.25f, 2f, Fmt.Times, _ => ApplyHeight());
+        _grappleHeight.Maintain(ApplyHeight);
+
         _zipSpeed = AddSlider("line_launcher_speed", "LINE LAUNCHER SPEED", "How fast the line launcher carries you along its line, and how quickly it gets there.",
             1f, 0.5f, 3f, 0.25f, 2f, Fmt.Times, _ => ApplyZip());
         _zipSpeed.Maintain(ApplyZip);
@@ -92,6 +100,7 @@ internal sealed class Movement : Module
         _glide.Restore();
         _grapple.Restore();
         _boost.Restore();
+        _height.Restore();
         _zip.Restore();
         _tunnel.Restore();
         ClearGravity();
@@ -102,6 +111,8 @@ internal sealed class Movement : Module
     private void ApplyGrapple() => _grapple.Apply(World.Player, _grappleSpeed.Value);
 
     private void ApplyBoost() => _boost.Apply(World.Player?.GrappleGun, _boostPower.Value);
+
+    private void ApplyHeight() => _height.Apply(World.Player?.GrappleGun, _grappleHeight.Value);
 
     private void ApplyZip() => _zip.Apply(World.Player?.LineLauncher, _zipSpeed.Value);
 

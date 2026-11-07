@@ -22,15 +22,16 @@ internal static class Layout
         ("PLAYER/COMBAT", new Section[]
         {
             new("AUTOMATIC", "auto_fight", "auto_counter", "auto_dodge_red", "gun_miss"),
-            new("FIGHTING", "combo_lock", "combo_multiplier", "upgraded_batsuit", "freeflow_focus", "npc_group_slowmo", "counter_icons"),
-            new("YOUR HITS", "one_hit_ko", "npc_ragdoll_hits", "npc_helmets_off", "disarm_first_hit", "npc_no_stun_stars"),
+            new("STYLE", "fight_style", "zip_kick"),
+            new("FIGHTING", "combo_lock", "combo_multiplier", "upgraded_batsuit", "freeflow_focus", "heavy_counters", "npc_group_slowmo", "counter_icons"),
+            new("YOUR HITS", "one_hit_ko", "last_enemy_fights", "npc_ragdoll_hits", "npc_helmets_off", "disarm_first_hit", "npc_no_stun_stars"),
             new("TAKEDOWNS", "always_takedown", "silent_takedowns", "env_takedowns", "predator_combos", "double_shockwave", "friendly_dual_takedowns"),
         }),
         ("PLAYER/MOVEMENT", new Section[]
         {
             new("ON FOOT", "move_speed", "tunnel_speed"),
             new("GLIDING", "glide_speed", "infinite_glide", "glide_climb"),
-            new("GRAPPLE", "grapple_speed", "grapple_boost", "line_launcher_speed"),
+            new("GRAPPLE", "grapple_speed", "grapple_boost", "grapple_height", "line_launcher_speed"),
             new("FALLING", "fall_gravity"),
         }),
         ("PLAYER/GADGETS", new Section[]
@@ -38,6 +39,9 @@ internal static class Layout
             new("USE", "give_gadgets", "gadget_no_cooldown", "gadget_anywhere"),
             new("DISRUPTOR", "disruptor_unlimited", "disruptor_all_targets"),
             new("HACKING", "auto_password_hack"),
+            new("EXPLOSIVE GEL", "gel_lethal", "gel_damage", "gel_radius"),
+            new("FREEZE BLAST", "freeze_upgrades", "freeze_radius"),
+            new("BATCLAW", "batclaw_range"),
             new("EFFECTS", "smoke_duration", "jammed_blast"),
         }),
         ("PLAYER/CHARACTER", new Section[]
@@ -45,6 +49,7 @@ internal static class Layout
             new("SWITCH", "play_as", "switch_character", "back_to_batman"),
             new("SUIT", "suit", "apply_suit", "cancel_suit"),
             new("APPEARANCE", "hide_cape", "batman_size", "battle_damage", "apply_battle_damage"),
+            new("ANIMATION", "move_style"),
             new("DISGUISE", "disguise_look", "disguise_variant", "disguise", "disguise_wear", "disguise_fit_camera", "disguise_fit_gadgets"),
         }),
         ("PLAYER/PROGRESS", new Section[]

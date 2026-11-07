@@ -38,6 +38,12 @@ internal sealed class Held<TObj, TVal> where TObj : GameObject
 
     public void Set(TObj obj, TVal value) => Set(obj, _ => value);
 
+    /// <summary>Reads the same value off any object, without holding it: what another character has there, say.</summary>
+    public TVal Peek(TObj obj) => _get(obj);
+
+    /// <summary>True while this object is the one being held.</summary>
+    public bool Holds(TObj obj) => _obj is { IsValid: true } held && held.Ptr == obj.Ptr;
+
     public void Restore()
     {
         TObj? obj = _obj;

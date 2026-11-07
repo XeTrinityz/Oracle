@@ -82,6 +82,10 @@ internal sealed partial class Combat : Module
             new ConsoleProp("RPawnPlayerCombat", "bCanDoComboTakedownOnPredator", "True", "False"));
         AddConsoleToggle("double_shockwave", "DOUBLE SHOCKWAVE LANDING", "Shockwave landings trigger a second shockwave.",
             new ConsoleProp("RSpecialMoveConfig_ShockwaveLand", "bTriggerSecondaryShockwave", "True", "False"));
+        AddConsoleToggle("heavy_counters", "HEAVY COUNTERS", "Every counter is one of the big slow-motion counters the game normally saves for special moments.",
+            new ConsoleProp("RPawnPlayerCombat", "bForceHeavyCounter", "True", "False"));
+        AddConsoleToggle("last_enemy_fights", "LAST ENEMY FIGHTS ON", "The last enemy standing is no longer knocked out early for a cinematic final blow: he takes as many hits as everyone else.",
+            new ConsoleProp("RPawnVillain", "bQuickKOIfLastEnemy", "False", "True"));
     }
 
     public override void WorldChanged()

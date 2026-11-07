@@ -45,9 +45,12 @@ help, hotkey and default value. PREVIEW PAGES shows each page's rows as you brow
 and each page remembers the row you were on.
 
 **Combat.** AUTO FIGHT: Batman fights by himself with his whole moveset, countering and dodging every attack. It is a
-learning brain that ships trained (`fight_brain.txt`) and keeps learning from your fights. Also AUTO COUNTER, AUTO
-DODGE GUNFIRE, COMBO MULTIPLIER, COMBO NEVER RESETS, ONE HIT KO, ragdoll hits, knocking off helmets, disarm on first
-hit and more.
+learning brain that ships trained (`fight_brain.txt`) and keeps learning from your fights. FIGHTING STYLE fights with
+another playable character's moves while you stay who you are: Robin's, Nightwing's, Catwoman's, Batgirl's, Red Hood's
+or Harley Quinn's strikes, counters, takedowns, throws and weapon moves, built the way the game builds them for that
+character. BATCLAW ZIP KICK fires the Batclaw at a thug and zips you in with Robin's flying kick. Also AUTO COUNTER,
+AUTO DODGE GUNFIRE, COMBO MULTIPLIER, COMBO NEVER RESETS, ONE HIT KO, HEAVY COUNTERS, LAST ENEMY FIGHTS ON, ragdoll
+hits, knocking off helmets, disarm on first hit and more.
 
 **Teleport, six tabs.** Long teleports fade to black and fly you there above the rooftops, so the city streams in
 district by district as it does when you glide, then land you on ground that belongs to a loaded level. Teleport to waypoint or objective, GO BACK through your last 16 teleports, the game's whole world map
@@ -100,8 +103,10 @@ health regeneration, unbreakable armour, no hit reactions, no stuns, invisible t
 status readout with health, armour, XP and upgrade points. PROGRESS adds an XP multiplier and +5000 XP, and
 CHARACTER sets Batman's suit battle damage.
 
-**Player.** Movement sliders for glide speed, grapple speed and boost power, line launcher speed, fall gravity and
-low tunnel speed. Gadget cheats (no cooldown, use anywhere, unlimited disruptor, auto password hacks), Showcase suits applied on the spot,
+**Player.** Movement sliders for glide speed, grapple speed, boost power and height, line launcher speed, fall gravity
+and low tunnel speed. MOVEMENT STYLE moves you like another playable character (their idles, walks, runs, turns,
+climbs and glides), which pairs with DISGUISE. Gadget cheats (no cooldown, use anywhere, unlimited disruptor, auto
+password hacks, lethal and tuned explosive gel, every freeze blast upgrade, Batclaw range), Showcase suits applied on the spot,
 upgrade points and unlocks, SAVE GAME NOW, and a Riddler page: reveal every trophy on the map, or SKIP TO RIDDLER
 FINALE. Several Riddler and GCPD soft-locks are fixed along the way.
 

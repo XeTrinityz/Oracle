@@ -11,8 +11,8 @@ internal static class App
     /// <summary>Update order, and through registration the order of rows within each menu page.</summary>
     public static readonly Module[] Modules =
     {
-        Player.I, Status.I, GlideMod.I, Movement.I, Combat.I, Gadgets.I, Npcs.I, WorldEditor.I, Spawner.I, Screen.I, Atmosphere.I, PostFx.I, PreScarecrowLook.I, PreScarecrowSky.I, PreScarecrowEra.I, Cosmetics.I, Rain.I, Lightning.I, Wind.I, Population.I, JokerVisions.I, JammedGuns.I, CameraRig.I, FreeCam.I, Batmobile.I,
-        BatmobileSkin.I, BatmobileSound.I, CharacterSuit.I, Disguise.I, Teleport.I, TeleportTools.I, TimeControl.I, Characters.I, Music.I, NewGamePlus.I, Progress.I, Riddler.I, Saves.I, SystemPage.I, GameTweaks.I, BuildingDetail.I, AssetBrowser.I, DebugKeys.I,
+        Player.I, Status.I, GlideMod.I, Movement.I, Combat.I, FightingStyle.I, ZipKick.I, Gadgets.I, GadgetTuning.I, Npcs.I, WorldEditor.I, Spawner.I, Screen.I, Atmosphere.I, PostFx.I, PreScarecrowLook.I, PreScarecrowSky.I, PreScarecrowEra.I, Cosmetics.I, Rain.I, Lightning.I, Wind.I, Population.I, JokerVisions.I, JammedGuns.I, CameraRig.I, FreeCam.I, Batmobile.I,
+        BatmobileSkin.I, BatmobileSound.I, CharacterSuit.I, Disguise.I, MovementStyle.I, Teleport.I, TeleportTools.I, TimeControl.I, Characters.I, Music.I, NewGamePlus.I, Progress.I, Riddler.I, Saves.I, SystemPage.I, GameTweaks.I, BuildingDetail.I, AssetBrowser.I, DebugKeys.I,
     };
 
     private static FrameTimer _tick;

@@ -17,9 +17,14 @@ internal sealed class Characters : Module
 {
     public static readonly Characters I = new();
 
-    private sealed record Def(string Key, string Label, string Packages, string PlayerClass, string Name, bool DiveBoost, bool InstantCar);
+    /// <summary>A playable character: its menu key and label, the packages that hold it, and the names the game loads it by.</summary>
+    internal sealed record Def(string Key, string Label, string Packages, string PlayerClass, string Name, bool DiveBoost, bool InstantCar)
+    {
+        /// <summary>True for the characters that come with a story pack DLC.</summary>
+        public bool Dlc => Packages.Contains("_DLC", StringComparison.OrdinalIgnoreCase);
+    }
 
-    private static readonly Def[] Roster =
+    internal static readonly Def[] Roster =
     {
         new("batman", "BATMAN", "Playable_Batman_Std_SF", "Playable_Batman", "Batman", false, false),
         new("nightwing", "NIGHTWING", "Playable_Nightwing0_SF|Playable_Nightwing_SF", "Playable_Nightwing0", "Nightwing0", false, false),
